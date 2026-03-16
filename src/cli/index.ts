@@ -7,6 +7,7 @@ import { doneCommand } from "./commands/done.js";
 import { editCommand } from "./commands/edit.js";
 import { deleteCommand } from "./commands/delete.js";
 import { processCommand } from "./commands/process.js";
+import { uiCommand } from "./commands/ui.js";
 
 export const mainCommand = defineCommand({
   meta: {
@@ -23,5 +24,6 @@ export const mainCommand = defineCommand({
     edit: editCommand,
     delete: deleteCommand,
     process: processCommand,
+    ui: uiCommand,
   },
 });
