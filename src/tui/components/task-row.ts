@@ -18,6 +18,10 @@ const PRIORITY_SYMBOLS: Record<string, string> = {
   none: "   ",
 };
 
+function formatDue(due: string): string {
+  return due.slice(0, 10);
+}
+
 export function createTaskRow(
   renderer: RenderContext,
   task: Task,
@@ -43,10 +47,18 @@ export function createTaskRow(
           ? theme.priorityLow
           : theme.muted;
 
-  const dueStr = task.due ? ` (${task.due.slice(0, 10)})` : "";
   const id = task.id.slice(0, 8);
+  const titleColor = opts.selected ? theme.selectedFg : theme.fg;
 
-  const content = t`${fg(theme.muted)(status)} ${fg(priorityColor)(bold(prioritySym))} ${fg(theme.muted)(id)}  ${fg(opts.selected ? theme.selectedFg : theme.fg)(task.title)}${fg(theme.warning)(dueStr)}`;
+  // Build metadata chips
+  const chips: string[] = [];
+  if (task.due) chips.push(`due:${formatDue(task.due)}`);
+  if (task.area) chips.push(`[${task.area}]`);
+  if (task.project) chips.push(`{${task.project}}`);
+  if (task.tags?.length) chips.push(task.tags.map((t) => `#${t}`).join(" "));
+  const meta = chips.length > 0 ? `  ${chips.join(" ")}` : "";
+
+  const content = t`${fg(theme.muted)(status)} ${fg(priorityColor)(bold(prioritySym))} ${fg(theme.muted)(id)}  ${fg(titleColor)(task.title)}${fg(theme.warning)(meta)}`;
 
   row.add(
     new TextRenderable(renderer, {

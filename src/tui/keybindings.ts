@@ -4,13 +4,13 @@ export type Action =
   | "quit"
   | "navigate_up"
   | "navigate_down"
-  | "navigate_left"
-  | "navigate_right"
   | "select"
   | "add_task"
   | "mark_done"
   | "delete_task"
   | "edit_task"
+  | "undo"
+  | "redo"
   | "filter"
   | "screen_dashboard"
   | "screen_list"
@@ -26,8 +26,6 @@ export function resolveAction(key: KeyEvent): Action | null {
   // Navigation
   if (key.name === "j" || key.name === "down") return "navigate_down";
   if (key.name === "k" || key.name === "up") return "navigate_up";
-  if (key.name === "h" || key.name === "left") return "navigate_left";
-  if (key.name === "l" || key.name === "right") return "navigate_right";
 
   // Actions
   if (key.name === "return") return "select";
@@ -35,6 +33,8 @@ export function resolveAction(key: KeyEvent): Action | null {
   if (key.name === "d") return "mark_done";
   if (key.name === "x") return "delete_task";
   if (key.name === "e") return "edit_task";
+  if (key.name === "u" && key.shift) return "redo";
+  if (key.name === "u") return "undo";
   if (key.name === "/") return "filter";
   if (key.name === "escape") return "escape";
 

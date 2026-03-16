@@ -1,4 +1,4 @@
-import { defineCommand } from "citty";
+import { defineCommand, showUsage } from "citty";
 import { initCommand } from "./commands/init.js";
 import { addCommand } from "./commands/add.js";
 import { listCommand } from "./commands/list.js";
@@ -25,5 +25,12 @@ export const mainCommand = defineCommand({
     delete: deleteCommand,
     process: processCommand,
     ui: uiCommand,
+  },
+  run({ rawArgs }) {
+    // Only show usage if no subcommand was provided
+    const hasSubCommand = rawArgs.some((arg: string) => !arg.startsWith("-"));
+    if (!hasSubCommand) {
+      showUsage(mainCommand);
+    }
   },
 });

@@ -3,7 +3,7 @@ import type { TskTheme } from "../theme.js";
 
 export interface FilterBarResult {
   container: BoxRenderable;
-  input: InputRenderable;
+  input: InputRenderable; // mutable -- app.ts may replace this on each filter open
 }
 
 export function createFilterBar(

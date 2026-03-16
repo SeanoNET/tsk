@@ -45,6 +45,7 @@ export async function autoCommit(action: string, taskTitle: string): Promise<voi
   await gitCommit(msg);
 }
 
+
 export async function ensureGitInstalled(): Promise<boolean> {
   try {
     const proc = Bun.spawn(["git", "--version"], { stdout: "pipe", stderr: "pipe" });

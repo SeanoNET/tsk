@@ -6,6 +6,8 @@ import { taskFilePath } from "../../core/paths.js";
 import { readTaskFile } from "../../core/markdown.js";
 import { indexTask } from "../../core/db.js";
 import { autoCommit } from "../../core/git.js";
+import { parseAddInput } from "../../tui/add-parser.js";
+import { interactiveInput } from "../interactive-input.js";
 import type { TaskPriority, TaskStatus } from "../../core/task.js";
 import { success, failure, printResult } from "../output.js";
 
@@ -25,8 +27,9 @@ export const editCommand = defineCommand({
     area: { type: "string", description: "New area", alias: "a" },
     project: { type: "string", description: "New project" },
     tags: { type: "string", description: "New tags (comma-separated)", alias: "t" },
-    due: { type: "string", description: "New due date", alias: "d" },
+    due: { type: "string", description: "New due date (ISO, relative: tomorrow, 3d)", alias: "d" },
     duration: { type: "string", description: "New duration" },
+    interactive: { type: "boolean", description: "Interactive mode with tab completion", alias: "i", default: false },
     editor: { type: "string", description: "Editor command" },
     json: { type: "boolean", description: "Output JSON", default: false },
   },
@@ -34,6 +37,7 @@ export const editCommand = defineCommand({
     try {
       const db = await ensureInitialized();
       const id = args.id as string;
+      const task = await getTask(db, id);
 
       // If inline flags provided, update directly
       const hasInlineEdit =
@@ -50,21 +54,53 @@ export const editCommand = defineCommand({
         if (args.due) updates.due = args.due;
         if (args.duration) updates.duration = args.duration;
 
-        const task = await updateTask(db, id, updates);
+        const updated = await updateTask(db, id, updates);
         db.close();
 
         if (args.json) {
-          printResult(success(task), true);
+          printResult(success(updated), true);
         } else {
-          console.log(`Updated task ${task.id}: ${task.title}`);
+          console.log(`Updated task ${updated.id}: ${updated.title}`);
         }
         return;
       }
 
-      // Otherwise open in editor
-      const task = await getTask(db, id);
-      const filePath = taskFilePath(task.id);
+      // Interactive mode: show current values and let user modify with tab completion
+      if (args.interactive) {
+        // Build current state as inline syntax
+        const parts = [task.title];
+        if (task.priority !== "none") parts.push(`!${task.priority}`);
+        if (task.tags?.length) parts.push(...task.tags.map((t) => `#${t}`));
+        if (task.status !== "inbox") parts.push(`@${task.status}`);
+        if (task.due) parts.push(`due:${task.due.slice(0, 10)}`);
+        if (task.area) parts.push(`area:${task.area}`);
+        if (task.project) parts.push(`project:${task.project}`);
+        if (task.duration) parts.push(`dur:${task.duration}`);
+        const initial = parts.join(" ");
 
+        console.log(`Editing task ${task.id}`);
+        const raw = await interactiveInput(db, "tsk edit> ", initial);
+        if (!raw) {
+          console.log("Cancelled.");
+          db.close();
+          return;
+        }
+
+        const { title, overrides } = parseAddInput(raw);
+        if (title) overrides.title = title;
+        const updated = await updateTask(db, task.id, overrides as any);
+        db.close();
+
+        if (args.json) {
+          printResult(success(updated), true);
+        } else {
+          console.log(`Updated task ${updated.id}: ${updated.title}`);
+        }
+        return;
+      }
+
+      // Default: open in editor
+      const filePath = taskFilePath(task.id);
       const config = await readConfig();
       const editor = args.editor ?? config.core.editor ?? resolveEditor();
 
@@ -73,7 +109,6 @@ export const editCommand = defineCommand({
       });
       await proc.exited;
 
-      // Re-read the file after editing
       const updated = await readTaskFile(task.id);
       indexTask(db, updated, filePath);
       await autoCommit("edit", updated.title);

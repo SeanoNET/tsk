@@ -20,7 +20,7 @@ export function createStatusBar(
     content: t` ${bold(fg(theme.headerFg)("tsk"))} ${fg(theme.muted)("|")} ${fg(theme.fg)(opts.screen)} ${fg(theme.muted)(`(${opts.taskCount} tasks)`)}`,
   });
 
-  const hints = opts.hints ?? "j/k:nav  d:done  a:add  /:filter  1:dash  2:list  q:quit";
+  const hints = opts.hints ?? "j/k:nav  d:done  a:add  u:undo  1:dash  2:list  q:quit";
   const right = new TextRenderable(renderer, {
     id: "status-right",
     content: t`${fg(theme.muted)(hints)} `,

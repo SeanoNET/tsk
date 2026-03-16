@@ -118,11 +118,32 @@ export function createListScreen(
           height: 1,
         })
       );
-    }
+    } else {
+      // Group by area
+      const groups = new Map<string, { indices: number[] }>();
+      for (let i = 0; i < state.tasks.length; i++) {
+        const area = state.tasks[i].area || "(no area)";
+        if (!groups.has(area)) groups.set(area, { indices: [] });
+        groups.get(area)!.indices.push(i);
+      }
 
-    for (let i = 0; i < state.tasks.length; i++) {
-      const selected = i === state.selectedIndex;
-      content.add(createTaskRow(renderer, state.tasks[i], theme, { selected }));
+      let groupIdx = 0;
+      for (const [area, group] of groups) {
+        // Area header
+        content.add(
+          new TextRenderable(renderer, {
+            id: `list-area-${groupIdx}`,
+            content: t`${fg(theme.muted)(`── ${area} (${group.indices.length}) ──`)}`,
+            width: "100%",
+            height: 1,
+          })
+        );
+        for (const i of group.indices) {
+          const selected = i === state.selectedIndex;
+          content.add(createTaskRow(renderer, state.tasks[i], theme, { selected }));
+        }
+        groupIdx++;
+      }
     }
 
     // Rebuild container
@@ -135,7 +156,7 @@ export function createListScreen(
     const statusBar = createStatusBar(renderer, theme, {
       screen: "List",
       taskCount: state.tasks.length,
-      hints: "j/k:nav  d:done  x:del  e:edit  /:filter  1:dash  q:quit",
+      hints: "j/k:nav  d:done  x:del  a:add  u:undo  /:filter  1:dash  q:quit",
     });
     container.add(statusBar);
   }
