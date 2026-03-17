@@ -1,32 +1,44 @@
-import { BoxRenderable, TextRenderable, t, bold, fg, type RenderContext } from "@opentui/core";
+import { BoxRenderable, TextRenderable, t, fg, strikethrough, type RenderContext } from "@opentui/core";
+import { DateTime } from "luxon";
 import type { Task } from "../../core/task.js";
 import type { TskTheme } from "../theme.js";
 
 const STATUS_SYMBOLS: Record<string, string> = {
-  inbox: "[ ]",
-  next: "[>]",
-  waiting: "[~]",
-  someday: "[?]",
-  done: "[x]",
-  cancelled: "[-]",
+  inbox: "\u25A1",     // □
+  next: "\u2026",      // …
+  waiting: "\u25A1",   // □
+  someday: "\u25A1",   // □
+  done: "\u2714",      // ✔
+  cancelled: "\u2718", // ✘
 };
 
-const PRIORITY_SYMBOLS: Record<string, string> = {
-  high: "!!!",
-  medium: "!! ",
-  low: "!  ",
-  none: "   ",
-};
+function statusColor(status: string, theme: TskTheme): string {
+  if (status === "next") return theme.accent;
+  if (status === "done") return theme.success;
+  if (status === "cancelled") return theme.error;
+  return theme.muted;
+}
 
-function formatDue(due: string): string {
-  return due.slice(0, 10);
+function formatAge(created: string): string {
+  const createdDt = DateTime.fromISO(created);
+  const now = DateTime.now();
+  const hours = Math.floor(now.diff(createdDt, "hours").hours);
+  const days = Math.floor(now.diff(createdDt, "days").days);
+  const weeks = Math.floor(now.diff(createdDt, "weeks").weeks);
+  const months = Math.floor(now.diff(createdDt, "months").months);
+
+  if (hours < 1) return "<1h";
+  if (hours < 24) return `${hours}h`;
+  if (days <= 6) return `${days}d`;
+  if (weeks <= 4) return `${weeks}w`;
+  return `${months}mo`;
 }
 
 export function createTaskRow(
   renderer: RenderContext,
   task: Task,
   theme: TskTheme,
-  opts: { selected?: boolean } = {}
+  opts: { selected?: boolean; displayId: number }
 ): BoxRenderable {
   const row = new BoxRenderable(renderer, {
     id: `task-${task.id}`,
@@ -36,29 +48,44 @@ export function createTaskRow(
     backgroundColor: opts.selected ? theme.selectedBg : undefined,
   });
 
-  const status = STATUS_SYMBOLS[task.status] ?? "[ ]";
-  const prioritySym = PRIORITY_SYMBOLS[task.priority] ?? "   ";
-  const priorityColor =
-    task.priority === "high"
-      ? theme.priorityHigh
-      : task.priority === "medium"
-        ? theme.priorityMedium
-        : task.priority === "low"
-          ? theme.priorityLow
-          : theme.muted;
+  const isDone = task.status === "done" || task.status === "cancelled";
+  const sym = STATUS_SYMBOLS[task.status] ?? "\u25A1";
+  const symColor = statusColor(task.status, theme);
 
-  const id = task.id.slice(0, 8);
+  // Display ID: right-aligned in 3-char column, with > prefix when selected
+  const idStr = String(opts.displayId);
+  const idPadded = opts.selected
+    ? `>${idStr.padStart(2)}`
+    : ` ${idStr.padStart(2)}`;
+
   const titleColor = opts.selected ? theme.selectedFg : theme.fg;
 
-  // Build metadata chips
-  const chips: string[] = [];
-  if (task.due) chips.push(`due:${formatDue(task.due)}`);
-  if (task.area) chips.push(`[${task.area}]`);
-  if (task.project) chips.push(`{${task.project}}`);
-  if (task.tags?.length) chips.push(task.tags.map((t) => `#${t}`).join(" "));
-  const meta = chips.length > 0 ? `  ${chips.join(" ")}` : "";
+  // Priority indicator — uses priorityHigh (red) and priorityMedium (yellow)
+  const priStr = task.priority === "high" ? " (!!) " : task.priority === "medium" ? " (!) " : " ";
+  const priColor = task.priority === "high" ? theme.priorityHigh : task.priority === "medium" ? theme.priorityMedium : theme.muted;
 
-  const content = t`${fg(theme.muted)(status)} ${fg(priorityColor)(bold(prioritySym))} ${fg(theme.muted)(id)}  ${fg(titleColor)(task.title)}${fg(theme.warning)(meta)}`;
+  // Build content using tagged template
+  const titlePart = isDone
+    ? fg(theme.muted)(strikethrough(task.title))
+    : fg(titleColor)(task.title);
+
+  // Tags — uses fieldTag color (purple), consistent with #tag in add dialog
+  const tagStr = task.tags?.length
+    ? task.tags.map(tag => `#${tag}`).join(" ")
+    : "";
+
+  // Age
+  const age = formatAge(task.created);
+
+  // Assemble: id sym title priority tags age
+  const idPart = fg(opts.selected ? theme.selectedFg : theme.muted)(idPadded);
+  const symPart = fg(symColor)(sym);
+  const priPart = priStr !== " " ? fg(priColor)(priStr) : " ";
+  const agePart = fg(theme.muted)(age);
+
+  const content = tagStr
+    ? t`${idPart} ${symPart} ${titlePart}${priPart}${fg(theme.fieldTag)(tagStr)} ${agePart}`
+    : t`${idPart} ${symPart} ${titlePart}${priPart}${agePart}`;
 
   row.add(
     new TextRenderable(renderer, {

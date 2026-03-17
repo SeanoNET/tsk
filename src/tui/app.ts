@@ -1,20 +1,16 @@
-import { createCliRenderer, InputRenderable, BoxRenderable, TextRenderable, type KeyEvent } from "@opentui/core";
+import { createCliRenderer, InputRenderable, BoxRenderable, TextRenderable, t, fg, type KeyEvent } from "@opentui/core";
 import type { Database } from "bun:sqlite";
 import { removeAllChildren } from "./helpers.js";
 import { getTheme } from "./theme.js";
 import { resolveAction } from "./keybindings.js";
 import { pushUndo, performUndo, performRedo } from "./undo.js";
 import { parseAddInput } from "./add-parser.js";
+import { parseCommand } from "./components/command-bar.js";
 import {
-  createDashboardScreen,
-  handleDashboardAction,
-  getSelectedTask as getDashboardSelected,
-} from "./screens/dashboard.js";
-import {
-  createListScreen,
-  handleListAction,
-  getSelectedTask as getListSelected,
-} from "./screens/list.js";
+  createBoardScreen,
+  handleBoardAction,
+  getSelectedTask,
+} from "./screens/board.js";
 import { completeTask, deleteTask, createTask, getTask } from "../core/crud.js";
 import { readConfig } from "../core/config.js";
 import { taskFilePath } from "../core/paths.js";
@@ -24,8 +20,6 @@ import { handleTabComplete, resetTabState } from "./tab-complete.js";
 import { readTaskFile } from "../core/markdown.js";
 import { indexTask } from "../core/db.js";
 import { autoCommit } from "../core/git.js";
-
-type Screen = "dashboard" | "list";
 
 function parseDurMinutes(dur?: string): number {
   if (!dur) return 30;
@@ -47,62 +41,74 @@ export async function launchTui(db: Database): Promise<void> {
   const renderer = await createCliRenderer();
   const theme = getTheme(renderer.themeMode);
 
-  let currentScreen: Screen = "dashboard";
-  let inputMode = false; // true when add bar or filter bar has focus
+  let inputMode = false;
 
-  const dashboard = createDashboardScreen(renderer, db, theme);
-  const list = createListScreen(renderer, db, theme);
+  const board = createBoardScreen(renderer, db, theme);
 
-  function showScreen(screen: Screen) {
+  function refreshBoard() {
     removeAllChildren(renderer.root);
-    currentScreen = screen;
-    if (screen === "dashboard") {
-      dashboard.refresh();
-      renderer.root.add(dashboard.container);
-    } else {
-      list.refresh();
-      renderer.root.add(list.container);
-    }
-  }
-
-  function refreshCurrent() {
-    // Clear root first, then rebuild, to avoid flicker from stale children
-    removeAllChildren(renderer.root);
-    if (currentScreen === "dashboard") {
-      dashboard.refresh();
-      renderer.root.add(dashboard.container);
-    } else {
-      list.refresh();
-      renderer.root.add(list.container);
-    }
+    board.refresh();
+    renderer.root.add(board.container);
   }
 
   function showAddBar() {
     inputMode = true;
 
-    const addContainer = new BoxRenderable(renderer, {
-      id: "add-container",
-      flexDirection: "column",
+    // Full-screen overlay that centers the dialog
+    const overlay = new BoxRenderable(renderer, {
+      id: "add-overlay",
       width: "100%",
+      height: "100%",
+      position: "absolute",
+      justifyContent: "center",
+      alignItems: "center",
     });
 
+    // Dialog box with border
+    const dialog = new BoxRenderable(renderer, {
+      id: "add-dialog",
+      flexDirection: "column",
+      width: "60%",
+      backgroundColor: theme.headerBg,
+      border: true,
+      borderColor: theme.accent,
+      borderStyle: "single",
+      padding: 1,
+    });
+
+    // Title
+    dialog.add(new TextRenderable(renderer, {
+      id: "add-title",
+      content: t`${fg(theme.accent)("New Task")}`,
+      width: "100%",
+      height: 1,
+    }));
+
+    // Input row
     const bar = new BoxRenderable(renderer, {
       id: "add-bar",
       flexDirection: "row",
       width: "100%",
       height: 1,
-      backgroundColor: theme.headerBg,
     });
     bar.add(new TextRenderable(renderer, {
       id: "add-label",
-      content: " + ",
-      fg: theme.success,
+      content: t`${fg(theme.success)("+")} `,
     }));
 
+    // Autocomplete suggestions (dynamic)
     const hintsRow = new TextRenderable(renderer, {
       id: "add-hints",
       content: "",
       fg: theme.muted,
+      width: "100%",
+      height: 1,
+    });
+
+    // Color-coded syntax help
+    const helpText = new TextRenderable(renderer, {
+      id: "add-help",
+      content: t`  ${fg(theme.priorityHigh)("!pri")} ${fg(theme.fieldTag)("#tag")} ${fg(theme.fieldStatus)("@status")} ${fg(theme.fieldDue)("due:date")} ${fg(theme.fieldArea)("area:name")} ${fg(theme.fieldProject)("project:name")} ${fg(theme.fieldDuration)("dur:1h")}`,
       width: "100%",
       height: 1,
     });
@@ -112,7 +118,7 @@ export async function launchTui(db: Database): Promise<void> {
       const lastWord = words[words.length - 1] || "";
       const suggestions = getSuggestions(db, lastWord);
       if (suggestions.length > 0) {
-        hintsRow.content = `   ${suggestions.map((s) => s.label).join("  ")}`;
+        hintsRow.content = `  ${suggestions.map((s) => s.label).join("  ")}`;
       } else {
         hintsRow.content = "";
       }
@@ -120,7 +126,7 @@ export async function launchTui(db: Database): Promise<void> {
 
     const input = new InputRenderable(renderer, {
       id: "add-input",
-      placeholder: "title !pri #tag @status due:tomorrow area: project: dur:1h",
+      placeholder: "task title...",
       backgroundColor: theme.headerBg,
       textColor: theme.fg,
       cursorColor: theme.accent,
@@ -153,91 +159,318 @@ export async function launchTui(db: Database): Promise<void> {
             }
           }
           inputMode = false;
-          refreshCurrent();
+          refreshBoard();
         } else if (key.name === "escape") {
           inputMode = false;
-          refreshCurrent();
+          refreshBoard();
         } else {
-          // Update suggestions on next tick so input value is current
           setTimeout(() => updateHints(input.value), 0);
         }
       },
     });
 
     bar.add(input);
-    addContainer.add(bar);
-    addContainer.add(hintsRow);
+    dialog.add(bar);
+    dialog.add(hintsRow);
+    dialog.add(helpText);
     updateHints("");
 
+    overlay.add(dialog);
+
+    // Render board behind the dialog
     removeAllChildren(renderer.root);
-    renderer.root.add(addContainer);
-    if (currentScreen === "dashboard") {
-      renderer.root.add(dashboard.container);
-    } else {
-      renderer.root.add(list.container);
-    }
+    board.refresh();
+    renderer.root.add(board.container);
+    renderer.root.add(overlay);
     input.focus();
   }
 
-  function showFilterBar() {
-    inputMode = true;
-    list.state.filterVisible = true;
+  const COMMANDS = [
+    { name: "/done", alias: "/d", desc: "Mark task done" },
+    { name: "/delete", alias: "/x", desc: "Delete task" },
+    { name: "/edit", alias: "/e", desc: "Edit in editor" },
+    { name: "/filter", alias: "/f", desc: "Filter tasks" },
+    { name: "/undo", alias: "/u", desc: "Undo" },
+    { name: "/redo", alias: null, desc: "Redo" },
+    { name: "/quit", alias: "/q", desc: "Quit" },
+    { name: "/help", alias: "/?", desc: "Show help" },
+  ];
 
-    // Clear and recreate the filter input to reset its value
-    removeAllChildren(list.filterBar.container);
-    const label = new TextRenderable(renderer, {
-      id: "filter-label",
-      content: ` / `,
-      fg: theme.accent,
+  function getCommandSuggestions(input: string): string[] {
+    if (!input.startsWith("/")) return [];
+    const partial = input.toLowerCase();
+    return COMMANDS
+      .filter(c => c.name.startsWith(partial) || (c.alias && c.alias.startsWith(partial)))
+      .map(c => `${c.name}  ${c.desc}`)
+      .slice(0, 5);
+  }
+
+  function showCommandInput(prefill: string) {
+    inputMode = true;
+
+    const cmdContainer = new BoxRenderable(renderer, {
+      id: "cmd-input-container",
+      flexDirection: "column",
+      width: "100%",
+      backgroundColor: theme.bg,
     });
+
+    const inputRow = new BoxRenderable(renderer, {
+      id: "cmd-input-row",
+      flexDirection: "row",
+      width: "100%",
+      height: 1,
+      backgroundColor: theme.bg,
+    });
+
+    const prompt = new TextRenderable(renderer, {
+      id: "cmd-prompt",
+      content: t`${fg(theme.accent)(">")} ${fg(theme.muted)("/")}`,
+    });
+
+    const hintsRow = new TextRenderable(renderer, {
+      id: "cmd-hints",
+      content: "",
+      fg: theme.muted,
+      width: "100%",
+      height: 1,
+    });
+
+    function updateCommandHints(value: string) {
+      // Prepend / for matching since the prompt already shows it
+      const suggestions = getCommandSuggestions("/" + value);
+      if (suggestions.length > 0) {
+        hintsRow.content = `  ${suggestions.join("  ")}`;
+      } else {
+        hintsRow.content = "";
+      }
+    }
+
     const input = new InputRenderable(renderer, {
-      id: "filter-input",
-      placeholder: "filter: text, #tag, @status, !priority",
-      backgroundColor: theme.headerBg,
+      id: "cmd-input",
+      placeholder: "command...",
+      backgroundColor: theme.bg,
       textColor: theme.fg,
       cursorColor: theme.accent,
-      focusedBackgroundColor: theme.headerBg,
+      focusedBackgroundColor: theme.bg,
       flexGrow: 1,
-      onKeyDown: (key) => {
+      onKeyDown: async (key) => {
         if (key.name === "tab") {
           key.preventDefault();
-          handleTabComplete(input, db);
+          // Tab-complete: find first matching command
+          const partial = "/" + input.value;
+          const match = COMMANDS.find(c =>
+            c.name.startsWith(partial.toLowerCase()) ||
+            (c.alias && c.alias.startsWith(partial.toLowerCase()))
+          );
+          if (match) {
+            // Set input to command name without leading /
+            input.value = match.name.slice(1);
+            // Add space for commands that take arguments
+            if (match.name === "/filter") input.value += " ";
+          }
+          updateCommandHints(input.value);
           return;
         }
-        resetTabState();
         if (key.name === "return") {
-          list.state.filterText = input.value;
-          list.state.selectedIndex = 0;
-          list.state.filterVisible = false;
+          const raw = input.value.trim();
           inputMode = false;
-          refreshCurrent();
+          if (raw) {
+            // Prepend / since the prompt already shows it
+            await executeCommand("/" + raw);
+          } else {
+            refreshBoard();
+          }
         } else if (key.name === "escape") {
-          list.state.filterVisible = false;
           inputMode = false;
-          refreshCurrent();
+          refreshBoard();
+        } else {
+          setTimeout(() => updateCommandHints(input.value), 0);
         }
       },
     });
-    list.filterBar.container.add(label);
-    list.filterBar.container.add(input);
-    list.filterBar.input = input;
 
-    refreshCurrent();
-    input.focus();
+    // Set prefill after creation (without leading /)
+    if (prefill) {
+      input.value = prefill;
+    }
+    updateCommandHints(prefill);
+
+    inputRow.add(prompt);
+    inputRow.add(input);
+    cmdContainer.add(hintsRow);
+    cmdContainer.add(inputRow);
+
+    // Swap the command bar in board.container with the active input
+    board.refresh();
+    const children = board.container.getChildren();
+    // Children order: header(0), content(1), commandBar(2), statusBar(3)
+    if (children.length >= 4) {
+      removeAllChildren(board.container);
+      board.container.add(children[0]); // header
+      board.container.add(children[1]); // content
+      board.container.add(cmdContainer); // active command input
+      board.container.add(children[3]); // status bar
+    }
+
+    removeAllChildren(renderer.root);
+    renderer.root.add(board.container);
+    // Defer focus so the triggering keypress (/) doesn't get typed into the input
+    setTimeout(() => input.focus(), 0);
+  }
+
+  async function executeCommand(raw: string) {
+    const result = parseCommand(raw);
+
+    switch (result.type) {
+      case "done": {
+        const task = getSelectedTask(board.state);
+        if (task) {
+          try {
+            const prevStatus = task.status;
+            await completeTask(db, task.id);
+            pushUndo({ type: "complete", taskId: task.id, previousStatus: prevStatus });
+          } catch { /* ignore */ }
+        }
+        break;
+      }
+      case "delete": {
+        const task = getSelectedTask(board.state);
+        if (task) {
+          try {
+            const snapshot = await getTask(db, task.id);
+            await deleteTask(db, task.id);
+            pushUndo({ type: "delete", snapshot });
+          } catch { /* ignore */ }
+        }
+        break;
+      }
+      case "edit": {
+        await editSelectedTask();
+        return;
+      }
+      case "filter":
+        board.state.filterText = result.text;
+        board.state.selectedIndex = 0;
+        break;
+      case "undo":
+        try { await performUndo(db); } catch { /* ignore */ }
+        break;
+      case "redo":
+        try { await performRedo(db); } catch { /* ignore */ }
+        break;
+      case "quit":
+        renderer.destroy();
+        db.close();
+        process.exit(0);
+        break;
+      case "help":
+        showHelp();
+        return;
+      case "unknown":
+        break;
+    }
+
+    refreshBoard();
+  }
+
+  function showHelp() {
+    // Full-screen overlay for centering
+    const overlay = new BoxRenderable(renderer, {
+      id: "help-overlay",
+      width: "100%",
+      height: "100%",
+      position: "absolute",
+      justifyContent: "center",
+      alignItems: "center",
+    });
+
+    // Dialog box with border
+    const dialog = new BoxRenderable(renderer, {
+      id: "help-dialog",
+      flexDirection: "column",
+      width: "60%",
+      backgroundColor: theme.headerBg,
+      border: true,
+      borderColor: theme.accent,
+      borderStyle: "single",
+      padding: 1,
+    });
+
+    let lineIdx = 0;
+    function textLine(text: string, color: string) {
+      const id = `help-line-${lineIdx++}`;
+      dialog.add(new TextRenderable(renderer, { id, content: t`${fg(color)(text)}`, width: "100%", height: 1 }));
+    }
+    function styledLine(content: any) {
+      const id = `help-line-${lineIdx++}`;
+      dialog.add(new TextRenderable(renderer, { id, content, width: "100%", height: 1 }));
+    }
+
+    textLine("Keyboard Shortcuts", theme.accent);
+    textLine("", theme.fg);
+    textLine("  j/\u2193     Navigate down", theme.fg);
+    textLine("  k/\u2191     Navigate up", theme.fg);
+    textLine("  Tab      Next area group", theme.fg);
+    textLine("  S-Tab    Previous area group", theme.fg);
+    textLine("  t        Add new task", theme.fg);
+    textLine("  d        Mark task done", theme.fg);
+    textLine("  x        Delete task", theme.fg);
+    textLine("  e        Edit in editor", theme.fg);
+    textLine("  u        Undo", theme.fg);
+    textLine("  U        Redo", theme.fg);
+    textLine("  Enter    View task detail", theme.fg);
+    textLine("  /        Open command bar", theme.fg);
+    textLine("  ?        Show this help", theme.fg);
+    textLine("  q        Quit", theme.fg);
+    textLine("", theme.fg);
+    textLine("Commands (type / then command):", theme.accent);
+    textLine("", theme.fg);
+    textLine("  /done /d       Mark selected task done", theme.fg);
+    textLine("  /delete /x     Delete selected task", theme.fg);
+    textLine("  /edit /e       Edit in editor", theme.fg);
+
+    // Color-coded filter syntax help
+    styledLine(t`${fg(theme.fg)("  /filter /f     Filter: ")}${fg(theme.fieldTag)("#tag")} ${fg(theme.fieldStatus)("@status")} ${fg(theme.priorityHigh)("!pri")} ${fg(theme.fg)("text")}`);
+
+    textLine("  /undo /u       Undo last action", theme.fg);
+    textLine("  /redo          Redo", theme.fg);
+    textLine("  /quit /q       Quit", theme.fg);
+    textLine("  /help /?       Show this help", theme.fg);
+    textLine("", theme.fg);
+
+    // Color legend
+    textLine("Field Colors:", theme.accent);
+    styledLine(t`  ${fg(theme.priorityHigh)("!priority")}  ${fg(theme.fieldTag)("#tag")}  ${fg(theme.fieldStatus)("@status")}  ${fg(theme.fieldDue)("due:date")}  ${fg(theme.fieldArea)("area:name")}  ${fg(theme.fieldProject)("project:name")}  ${fg(theme.fieldDuration)("dur:time")}`);
+    textLine("", theme.fg);
+    textLine("  Press any key to close", theme.muted);
+
+    overlay.add(dialog);
+
+    // Render board behind the dialog
+    removeAllChildren(renderer.root);
+    board.refresh();
+    renderer.root.add(board.container);
+    renderer.root.add(overlay);
+
+    const helpHandler = (_key: KeyEvent) => {
+      renderer.keyInput.removeListener("keypress", helpHandler);
+      refreshBoard();
+    };
+    renderer.keyInput.on("keypress", helpHandler);
   }
 
   async function editSelectedTask() {
-    const task =
-      currentScreen === "dashboard"
-        ? getDashboardSelected(dashboard.state)
-        : getListSelected(list.state);
-    if (!task) return;
+    const task = getSelectedTask(board.state);
+    if (!task) {
+      refreshBoard();
+      return;
+    }
 
     const filePath = taskFilePath(task.id);
     const config = await readConfig();
     const editor = config.core.editor ?? resolveEditor();
 
-    // Temporarily exit TUI, launch editor, then restore
     renderer.destroy();
 
     const proc = Bun.spawn([editor, filePath], {
@@ -245,33 +478,20 @@ export async function launchTui(db: Database): Promise<void> {
     });
     await proc.exited;
 
-    // Re-read and re-index the edited file
     try {
       const updated = await readTaskFile(task.id);
       indexTask(db, updated, filePath);
       await autoCommit("edit", updated.title);
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
 
-    // Restart TUI
-    const newRenderer = await createCliRenderer();
-    // Can't reassign renderer (const), so we exit and let the user relaunch
-    // This is a known limitation -- for now just exit cleanly
-    newRenderer.destroy();
-    db.close();
-    console.log("Task edited. TUI exited -- run `tsk ui` to relaunch.");
-    process.exit(0);
+    // Re-launch the TUI with the same db
+    await launchTui(db);
   }
 
   async function showSelectedTask() {
-    const task =
-      currentScreen === "dashboard"
-        ? getDashboardSelected(dashboard.state)
-        : getListSelected(list.state);
+    const task = getSelectedTask(board.state);
     if (!task) return;
 
-    // Show task detail as an overlay
     const detail = new BoxRenderable(renderer, {
       id: "task-detail",
       flexDirection: "column",
@@ -316,18 +536,16 @@ export async function launchTui(db: Database): Promise<void> {
     removeAllChildren(renderer.root);
     renderer.root.add(detail);
 
-    // Wait for dismiss key
     const detailHandler = (key: KeyEvent) => {
       if (key.name === "escape" || key.name === "return" || key.name === "q") {
         renderer.keyInput.removeListener("keypress", detailHandler);
-        refreshCurrent();
+        refreshBoard();
       }
     };
     renderer.keyInput.on("keypress", detailHandler);
   }
 
   renderer.keyInput.on("keypress", async (key: KeyEvent) => {
-    // When in input mode (add bar or filter bar), don't process global keys
     if (inputMode) return;
 
     const action = resolveAction(key);
@@ -340,32 +558,23 @@ export async function launchTui(db: Database): Promise<void> {
         process.exit(0);
         break;
 
-      case "screen_dashboard":
-        showScreen("dashboard");
-        break;
-
-      case "screen_list":
-        showScreen("list");
-        break;
-
       case "add_task":
         showAddBar();
         break;
 
-      case "filter":
-        if (currentScreen !== "list") {
-          showScreen("list");
-        }
-        showFilterBar();
+      case "command":
+        showCommandInput("");
+        break;
+
+      case "help":
+        showCommandInput("help");
         break;
 
       case "redo": {
         try {
           await performRedo(db);
-          refreshCurrent();
-        } catch {
-          // ignore
-        }
+          refreshBoard();
+        } catch { /* ignore */ }
         break;
       }
 
@@ -380,65 +589,48 @@ export async function launchTui(db: Database): Promise<void> {
       case "undo": {
         try {
           await performUndo(db);
-          refreshCurrent();
-        } catch {
-          // ignore
-        }
+          refreshBoard();
+        } catch { /* ignore */ }
         break;
       }
 
       case "mark_done": {
-        const task =
-          currentScreen === "dashboard"
-            ? getDashboardSelected(dashboard.state)
-            : getListSelected(list.state);
+        const task = getSelectedTask(board.state);
         if (task) {
           try {
             const prevStatus = task.status;
             await completeTask(db, task.id);
             pushUndo({ type: "complete", taskId: task.id, previousStatus: prevStatus });
-            refreshCurrent();
-          } catch {
-            // ignore
-          }
+            refreshBoard();
+          } catch { /* ignore */ }
         }
         break;
       }
 
       case "delete_task": {
-        const task =
-          currentScreen === "dashboard"
-            ? getDashboardSelected(dashboard.state)
-            : getListSelected(list.state);
+        const task = getSelectedTask(board.state);
         if (task) {
           try {
             const snapshot = await getTask(db, task.id);
             await deleteTask(db, task.id);
             pushUndo({ type: "delete", snapshot });
-            refreshCurrent();
-          } catch {
-            // ignore
-          }
+            refreshBoard();
+          } catch { /* ignore */ }
         }
         break;
       }
 
       case "escape":
-        if (currentScreen === "list" && list.state.filterText) {
-          list.state.filterText = "";
-          list.state.selectedIndex = 0;
-          refreshCurrent();
+        if (board.state.filterText) {
+          board.state.filterText = "";
+          board.state.selectedIndex = 0;
+          refreshBoard();
         }
         break;
 
       default: {
-        let needsRefresh = false;
-        if (currentScreen === "dashboard") {
-          needsRefresh = handleDashboardAction(dashboard.state, action);
-        } else {
-          needsRefresh = handleListAction(list.state, action);
-        }
-        if (needsRefresh) refreshCurrent();
+        const needsRefresh = handleBoardAction(board.state, action);
+        if (needsRefresh) refreshBoard();
       }
     }
   });
@@ -449,5 +641,5 @@ export async function launchTui(db: Database): Promise<void> {
     process.exit(1);
   });
 
-  showScreen("dashboard");
+  refreshBoard();
 }

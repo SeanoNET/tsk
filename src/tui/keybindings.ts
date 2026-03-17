@@ -11,9 +11,8 @@ export type Action =
   | "edit_task"
   | "undo"
   | "redo"
-  | "filter"
-  | "screen_dashboard"
-  | "screen_list"
+  | "command"
+  | "help"
   | "next_section"
   | "prev_section"
   | "escape";
@@ -29,18 +28,15 @@ export function resolveAction(key: KeyEvent): Action | null {
 
   // Actions
   if (key.name === "return") return "select";
-  if (key.name === "a") return "add_task";
+  if (key.name === "t") return "add_task";
   if (key.name === "d") return "mark_done";
   if (key.name === "x") return "delete_task";
   if (key.name === "e") return "edit_task";
   if (key.name === "u" && key.shift) return "redo";
   if (key.name === "u") return "undo";
-  if (key.name === "/") return "filter";
+  if (key.name === "/") return "command";
+  if (key.name === "?") return "help";
   if (key.name === "escape") return "escape";
-
-  // Screen switching
-  if (key.name === "1") return "screen_dashboard";
-  if (key.name === "2") return "screen_list";
 
   // Section cycling
   if (key.name === "tab") return key.shift ? "prev_section" : "next_section";

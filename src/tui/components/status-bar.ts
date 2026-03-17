@@ -1,10 +1,17 @@
 import { BoxRenderable, TextRenderable, t, bold, fg, type RenderContext } from "@opentui/core";
 import type { TskTheme } from "../theme.js";
 
+export interface BoardStats {
+  total: number;
+  done: number;
+  inProgress: number;
+  pending: number;
+}
+
 export function createStatusBar(
   renderer: RenderContext,
   theme: TskTheme,
-  opts: { screen: string; taskCount: number; hints?: string }
+  stats: BoardStats
 ): BoxRenderable {
   const bar = new BoxRenderable(renderer, {
     id: "status-bar",
@@ -15,15 +22,16 @@ export function createStatusBar(
     justifyContent: "space-between",
   });
 
+  const pct = stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0;
+
   const left = new TextRenderable(renderer, {
     id: "status-left",
-    content: t` ${bold(fg(theme.headerFg)("tsk"))} ${fg(theme.muted)("|")} ${fg(theme.fg)(opts.screen)} ${fg(theme.muted)(`(${opts.taskCount} tasks)`)}`,
+    content: t`${fg(theme.success)(`${pct}% done`)} ${fg(theme.muted)("|")} ${fg(theme.success)(`${stats.done} done`)} ${fg(theme.muted)("\u00B7")} ${fg(theme.accent)(`${stats.inProgress} in-progress`)} ${fg(theme.muted)("\u00B7")} ${fg(theme.warning)(`${stats.pending} pending`)}`,
   });
 
-  const hints = opts.hints ?? "j/k:nav  d:done  a:add  u:undo  1:dash  2:list  q:quit";
   const right = new TextRenderable(renderer, {
     id: "status-right",
-    content: t`${fg(theme.muted)(hints)} `,
+    content: t`${bold(fg(theme.fg)("?"))} ${fg(theme.muted)("Help")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("/"))} ${fg(theme.muted)("Command")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("t"))} ${fg(theme.muted)("Task")} `,
   });
 
   bar.add(left);
