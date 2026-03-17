@@ -1,4 +1,5 @@
 import { defineCommand, showUsage } from "citty";
+import pkg from "../../package.json";
 import { initCommand } from "./commands/init.js";
 import { addCommand } from "./commands/add.js";
 import { listCommand } from "./commands/list.js";
@@ -8,11 +9,13 @@ import { editCommand } from "./commands/edit.js";
 import { deleteCommand } from "./commands/delete.js";
 import { processCommand } from "./commands/process.js";
 import { uiCommand } from "./commands/ui.js";
+import { upgradeCommand } from "./commands/upgrade.js";
+import { checkForUpdate } from "../core/update-check.js";
 
 export const mainCommand = defineCommand({
   meta: {
     name: "tsk",
-    version: "0.1.0",
+    version: pkg.version,
     description: "Developer-first task manager with Git + Microsoft Graph sync",
   },
   subCommands: {
@@ -25,11 +28,12 @@ export const mainCommand = defineCommand({
     delete: deleteCommand,
     process: processCommand,
     ui: uiCommand,
+    upgrade: upgradeCommand,
   },
   run({ rawArgs }) {
-    // Only show usage if no subcommand was provided
     const hasSubCommand = rawArgs.some((arg: string) => !arg.startsWith("-"));
     if (!hasSubCommand) {
+      checkForUpdate(pkg.version);
       showUsage(mainCommand);
     }
   },
