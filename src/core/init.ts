@@ -42,6 +42,7 @@ export async function initTsk(force = false): Promise<void> {
       ".daemon.pid",
       ".sync-status.json",
       ".sync-mapping.json",
+      ".sync-lock",
     ].join("\n") + "\n"
   );
 

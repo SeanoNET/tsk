@@ -23,6 +23,7 @@ export interface TskTheme {
   fieldArea: string;      // area:
   fieldProject: string;   // project:
   fieldDuration: string;  // dur:
+  fieldSync: string;      // sync indicator
 }
 
 const darkTheme: TskTheme = {
@@ -47,6 +48,7 @@ const darkTheme: TskTheme = {
   fieldArea: "#2ac3de",      // teal
   fieldProject: "#9ece6a",   // green
   fieldDuration: "#e0af68",  // yellow
+  fieldSync: "#7aa2f7",      // blue (accent)
 };
 
 const lightTheme: TskTheme = {
@@ -71,6 +73,7 @@ const lightTheme: TskTheme = {
   fieldArea: "#0f7b8a",
   fieldProject: "#33635c",
   fieldDuration: "#8f5e15",
+  fieldSync: "#34548a",      // blue (accent)
 };
 
 export function getTheme(mode: ThemeMode | null): TskTheme {

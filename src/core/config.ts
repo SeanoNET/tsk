@@ -12,6 +12,12 @@ export interface TskConfig {
     enabled: boolean;
     intervalSeconds: number;
     clientId?: string;
+    todoListName?: string;
+    remote?: string;
+    remoteUrl?: string;
+    branch?: string;
+    autoSync?: boolean;
+    conflictStrategy?: "last-write-wins" | "keep-both";
   };
 }
 
