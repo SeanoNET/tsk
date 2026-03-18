@@ -34,53 +34,65 @@ export const addCommand = defineCommand({
   async run({ args }) {
     try {
       const db = await ensureInitialized();
-      let raw = args.title as string | undefined;
+      const isInteractive = !args.title || args.interactive;
 
-      // Interactive mode: prompt with tab completion
-      if (!raw || args.interactive) {
-        const initial = raw || "";
-        raw = await interactiveInput(db, "tsk add> ", initial) ?? undefined;
-        if (!raw) {
-          console.log("Cancelled.");
-          db.close();
-          return;
+      let keepGoing = true;
+      while (keepGoing) {
+        let raw = args.title as string | undefined;
+
+        // Interactive mode: prompt with tab completion
+        if (isInteractive) {
+          const initial = raw || "";
+          const result = await interactiveInput(db, "tsk add> ", initial, true);
+          if (!result.value) {
+            if (!raw) console.log("Cancelled.");
+            break;
+          }
+          raw = result.value;
+          keepGoing = result.addAnother;
+          // Clear positional title so subsequent loops prompt fresh
+          args.title = undefined as any;
+        } else {
+          keepGoing = false;
+        }
+
+        // Parse inline syntax from the title string
+        const { title, overrides } = parseAddInput(raw!);
+        if (!title) {
+          printResult(failure("Title is required"), args.json);
+          if (!keepGoing) process.exit(1);
+          continue;
+        }
+
+        // CLI flags override inline syntax
+        if (args.priority) overrides.priority = args.priority as TaskPriority;
+        if (args.area) overrides.area = args.area as string;
+        if (args.project) overrides.project = args.project as string;
+        if (args.tags) overrides.tags = (args.tags as string).split(",").map((t) => t.trim());
+        if (args.due) overrides.due = args.due as string;
+        if (args.duration) overrides.duration = args.duration as string;
+        if (args.status) overrides.status = args.status as string as any;
+
+        // Smart schedule
+        if (overrides.due && !overrides.scheduled) {
+          const durMin = parseDurMinutes(overrides.duration);
+          overrides.scheduled = suggestScheduledTime(db, overrides.due, durMin);
+        }
+
+        const task = await createTask(db, title, overrides);
+
+        if (args.json) {
+          printResult(success(task), true);
+        } else {
+          const parts = [`Created task ${task.id}: ${task.title}`];
+          if (task.due) parts.push(`  due: ${task.due.slice(0, 10)}`);
+          if (task.area) parts.push(`  area: ${task.area}`);
+          if (task.tags?.length) parts.push(`  tags: ${task.tags.join(", ")}`);
+          console.log(parts.join("\n"));
         }
       }
 
-      // Parse inline syntax from the title string
-      const { title, overrides } = parseAddInput(raw);
-      if (!title) {
-        printResult(failure("Title is required"), args.json);
-        process.exit(1);
-      }
-
-      // CLI flags override inline syntax
-      if (args.priority) overrides.priority = args.priority as TaskPriority;
-      if (args.area) overrides.area = args.area as string;
-      if (args.project) overrides.project = args.project as string;
-      if (args.tags) overrides.tags = (args.tags as string).split(",").map((t) => t.trim());
-      if (args.due) overrides.due = args.due as string;
-      if (args.duration) overrides.duration = args.duration as string;
-      if (args.status) overrides.status = args.status as string as any;
-
-      // Smart schedule
-      if (overrides.due && !overrides.scheduled) {
-        const durMin = parseDurMinutes(overrides.duration);
-        overrides.scheduled = suggestScheduledTime(db, overrides.due, durMin);
-      }
-
-      const task = await createTask(db, title, overrides);
       db.close();
-
-      if (args.json) {
-        printResult(success(task), true);
-      } else {
-        const parts = [`Created task ${task.id}: ${task.title}`];
-        if (task.due) parts.push(`  due: ${task.due.slice(0, 10)}`);
-        if (task.area) parts.push(`  area: ${task.area}`);
-        if (task.tags?.length) parts.push(`  tags: ${task.tags.join(", ")}`);
-        console.log(parts.join("\n"));
-      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       printResult(failure(msg), args.json);

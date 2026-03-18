@@ -1,4 +1,5 @@
 import { mkdir } from "fs/promises";
+import { join } from "path";
 import { tskDir, tasksDir, dbPath } from "./paths.js";
 import { writeConfig, DEFAULT_CONFIG } from "./config.js";
 import { openDb, initSchema } from "./db.js";
@@ -12,7 +13,7 @@ export async function initTsk(force = false): Promise<void> {
   const dir = tskDir();
 
   // 2. Check if already initialized
-  const dirExists = await Bun.file(`${dir}/config.toml`).exists();
+  const dirExists = await Bun.file(join(dir, "config.toml")).exists();
   if (dirExists && !force) {
     throw new Error(`tsk is already initialized at ${dir}. Use --force to re-initialize.`);
   }
@@ -30,15 +31,16 @@ export async function initTsk(force = false): Promise<void> {
   await gitInit();
 
   // 6. Write .gitattributes inside tsk dir
-  await Bun.write(`${dir}/.gitattributes`, "* text=auto eol=lf\n");
+  await Bun.write(join(dir, ".gitattributes"), "* text=auto eol=lf\n");
 
   // 7. Write .gitignore inside tsk dir
   await Bun.write(
-    `${dir}/.gitignore`,
+    join(dir, ".gitignore"),
     [
       "index.db",
       "index.db-wal",
       "index.db-shm",
+      "auth.json",
       ".daemon.pid",
       ".sync-status.json",
       ".sync-mapping.json",

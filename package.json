@@ -8,10 +8,14 @@
   "scripts": {
     "dev": "bun run src/tsk.ts",
     "test": "bun test",
-    "build": "bun build --compile --target=bun-linux-x64 src/tsk.ts --outfile dist/tsk",
-    "build:all": "bun build --compile --target=bun-linux-x64 src/tsk.ts --outfile dist/tsk"
+    "build": "bun build --compile src/tsk.ts --outfile dist/tsk",
+    "build:linux": "bun build --compile --target=bun-linux-x64 src/tsk.ts --outfile dist/tsk-linux-x64",
+    "build:windows": "bun build --compile --target=bun-windows-x64 src/tsk.ts --outfile dist/tsk-windows-x64.exe",
+    "build:macos": "bun build --compile --target=bun-darwin-arm64 src/tsk.ts --outfile dist/tsk-darwin-arm64",
+    "build:all": "bun run build:linux && bun run build:windows && bun run build:macos"
   },
   "dependencies": {
+    "@azure/msal-node": "^2.16.2",
     "@opentui/core": "^0.1.87",
     "citty": "^0.1.6",
     "gray-matter": "^4.0.3",

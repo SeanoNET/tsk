@@ -15,7 +15,7 @@ import { createStatusBar, type BoardStats } from "../components/status-bar.js";
 import { createCommandBar, type CommandBarResult } from "../components/command-bar.js";
 import { parseFilterString } from "../components/command-bar.js";
 import type { TskTheme } from "../theme.js";
-import type { Action } from "../keybindings.js";
+import type { Action, ActionResult } from "../keybindings.js";
 import { createSyncIndicator, type SyncState } from "../components/sync-indicator.js";
 
 interface AreaGroup {
@@ -30,6 +30,7 @@ export interface BoardState {
   selectedIndex: number;
   filterText: string;
   syncState?: SyncState;
+  showDone: boolean;
 }
 
 const STATUS_SORT_ORDER: Record<string, number> = {
@@ -57,11 +58,18 @@ function sortTasks(tasks: Task[]): Task[] {
     const priB = PRIORITY_SORT_ORDER[b.priority] ?? 3;
     if (priA !== priB) return priA - priB;
 
+    // Tasks with due dates come first, sorted by earliest due
+    const dueA = a.due ?? "";
+    const dueB = b.due ?? "";
+    if (dueA && !dueB) return -1;
+    if (!dueA && dueB) return 1;
+    if (dueA && dueB && dueA !== dueB) return dueA.localeCompare(dueB);
+
     return (a.created ?? "").localeCompare(b.created ?? "");
   });
 }
 
-function buildGroups(db: Database, filterText: string): { groups: AreaGroup[]; flatTasks: Task[] } {
+function buildGroups(db: Database, filterText: string, expandDone: boolean): { groups: AreaGroup[]; flatTasks: Task[]; doneCount: number } {
   const filter: TaskFilter = {};
   if (filterText) {
     const parsed = parseFilterString(filterText);
@@ -71,13 +79,25 @@ function buildGroups(db: Database, filterText: string): { groups: AreaGroup[]; f
     if (parsed.text) filter.search = parsed.text;
   }
 
+  const showDone = expandDone || filter.status === "done";
   const allTasks = queryTasks(db, filter).filter(
     (task) => task.status !== "cancelled"
   );
 
-  // Group by area
-  const areaMap = new Map<string, Task[]>();
+  // Separate done tasks unless explicitly filtering for them
+  const activeTasks: Task[] = [];
+  const doneTasks: Task[] = [];
   for (const task of allTasks) {
+    if (!showDone && task.status === "done") {
+      doneTasks.push(task);
+    } else {
+      activeTasks.push(task);
+    }
+  }
+
+  // Group active tasks by area
+  const areaMap = new Map<string, Task[]>();
+  for (const task of activeTasks) {
     const area = task.area || "Uncategorized";
     if (!areaMap.has(area)) areaMap.set(area, []);
     areaMap.get(area)!.push(task);
@@ -95,12 +115,13 @@ function buildGroups(db: Database, filterText: string): { groups: AreaGroup[]; f
 
   for (const name of areaNames) {
     const tasks = sortTasks(areaMap.get(name)!);
-    const doneCount = tasks.filter((task) => task.status === "done").length;
-    groups.push({ name, tasks, doneCount });
+    const totalForArea = tasks.length + doneTasks.filter((t) => (t.area || "Uncategorized") === name).length;
+    const doneForArea = doneTasks.filter((t) => (t.area || "Uncategorized") === name).length;
+    groups.push({ name, tasks, doneCount: doneForArea });
     flatTasks.push(...tasks);
   }
 
-  return { groups, flatTasks };
+  return { groups, flatTasks, doneCount: doneTasks.length };
 }
 
 export function createBoardScreen(
@@ -121,6 +142,7 @@ export function createBoardScreen(
     flatTasks: [],
     selectedIndex: 0,
     filterText: "",
+    showDone: false,
   };
 
   const header = new BoxRenderable(renderer, {
@@ -142,7 +164,7 @@ export function createBoardScreen(
   const commandBar = createCommandBar(renderer, theme);
 
   function refresh() {
-    const { groups, flatTasks } = buildGroups(db, state.filterText);
+    const { groups, flatTasks, doneCount } = buildGroups(db, state.filterText, state.showDone);
     state.groups = groups;
     state.flatTasks = flatTasks;
 
@@ -153,14 +175,19 @@ export function createBoardScreen(
 
     // Rebuild header
     removeAllChildren(header);
-    const filterLabel = state.filterText
-      ? `Board View (filtered: ${state.filterText})`
-      : "Board View";
-    header.add(new TextRenderable(renderer, {
-      id: "header-text",
-      content: t` ${bold(fg(theme.headerFg)("tsk"))}  ${fg(theme.muted)(filterLabel)}`,
-      flexGrow: 1,
-    }));
+    if (state.filterText) {
+      header.add(new TextRenderable(renderer, {
+        id: "header-text",
+        content: t` ${bold(fg(theme.headerFg)("tsk"))}  ${fg(theme.warning)(`filter: ${state.filterText}`)}  ${fg(theme.muted)("(Esc to clear)")}`,
+        flexGrow: 1,
+      }));
+    } else {
+      header.add(new TextRenderable(renderer, {
+        id: "header-text",
+        content: t` ${bold(fg(theme.headerFg)("tsk"))}  ${fg(theme.muted)("Board View")}`,
+        flexGrow: 1,
+      }));
+    }
 
     // Sync indicator (right-aligned in header)
     if (state.syncState && state.syncState.status !== "disabled") {
@@ -170,7 +197,7 @@ export function createBoardScreen(
     // Rebuild content
     removeAllChildren(content);
 
-    if (flatTasks.length === 0) {
+    if (flatTasks.length === 0 && doneCount === 0) {
       const emptyMsg = state.filterText
         ? "No tasks match the current filter."
         : "No tasks yet. Press t to add your first task.";
@@ -205,12 +232,23 @@ export function createBoardScreen(
           height: 1,
         }));
       }
+
+      // Done section summary
+      if (doneCount > 0) {
+        const arrow = state.showDone ? "\u25BC" : "\u25B6";
+        const label = `${arrow} \u2714 ${doneCount} done task${doneCount === 1 ? "" : "s"} (D to ${state.showDone ? "collapse" : "expand"})`;
+        content.add(new TextRenderable(renderer, {
+          id: "done-section",
+          content: t`  ${fg(theme.muted)(label)}`,
+          width: "100%",
+          height: 1,
+        }));
+      }
     }
 
-    // Compute stats
-    const stats: BoardStats = { total: 0, done: 0, inProgress: 0, pending: 0 };
+    // Compute stats (include collapsed done tasks)
+    const stats: BoardStats = { total: flatTasks.length + doneCount, done: doneCount, inProgress: 0, pending: 0 };
     for (const task of flatTasks) {
-      stats.total++;
       if (task.status === "done") stats.done++;
       else if (task.status === "next") stats.inProgress++;
       else stats.pending++;
@@ -235,21 +273,90 @@ export function getSelectedTask(state: BoardState): Task | null {
   return state.flatTasks[state.selectedIndex] ?? null;
 }
 
-export function handleBoardAction(state: BoardState, action: Action): boolean {
+const PAGE_SIZE = 20;
+const HALF_PAGE = 10;
+
+export function handleBoardAction(state: BoardState, result: ActionResult): boolean {
+  const { action, count } = result;
+  const max = state.flatTasks.length - 1;
+
   switch (action) {
-    case "navigate_down":
-      if (state.selectedIndex < state.flatTasks.length - 1) {
-        state.selectedIndex++;
+    case "navigate_down": {
+      const steps = count ?? 1;
+      if (state.selectedIndex < max) {
+        state.selectedIndex = Math.min(state.selectedIndex + steps, max);
+        return true;
+      }
+      return false;
+    }
+
+    case "navigate_up": {
+      const steps = count ?? 1;
+      if (state.selectedIndex > 0) {
+        state.selectedIndex = Math.max(state.selectedIndex - steps, 0);
+        return true;
+      }
+      return false;
+    }
+
+    case "goto_top":
+      if (state.selectedIndex !== 0) {
+        state.selectedIndex = 0;
         return true;
       }
       return false;
 
-    case "navigate_up":
-      if (state.selectedIndex > 0) {
-        state.selectedIndex--;
+    case "goto_bottom":
+      if (state.selectedIndex !== max) {
+        state.selectedIndex = max;
         return true;
       }
       return false;
+
+    case "goto_line": {
+      const target = Math.min((count ?? 1) - 1, max);
+      if (target >= 0 && target !== state.selectedIndex) {
+        state.selectedIndex = target;
+        return true;
+      }
+      return false;
+    }
+
+    case "half_page_down": {
+      const steps = (count ?? 1) * HALF_PAGE;
+      if (state.selectedIndex < max) {
+        state.selectedIndex = Math.min(state.selectedIndex + steps, max);
+        return true;
+      }
+      return false;
+    }
+
+    case "half_page_up": {
+      const steps = (count ?? 1) * HALF_PAGE;
+      if (state.selectedIndex > 0) {
+        state.selectedIndex = Math.max(state.selectedIndex - steps, 0);
+        return true;
+      }
+      return false;
+    }
+
+    case "page_down": {
+      const steps = (count ?? 1) * PAGE_SIZE;
+      if (state.selectedIndex < max) {
+        state.selectedIndex = Math.min(state.selectedIndex + steps, max);
+        return true;
+      }
+      return false;
+    }
+
+    case "page_up": {
+      const steps = (count ?? 1) * PAGE_SIZE;
+      if (state.selectedIndex > 0) {
+        state.selectedIndex = Math.max(state.selectedIndex - steps, 0);
+        return true;
+      }
+      return false;
+    }
 
     case "next_section": {
       // Jump to first task of next area group

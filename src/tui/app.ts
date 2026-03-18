@@ -2,7 +2,7 @@ import { createCliRenderer, InputRenderable, BoxRenderable, TextRenderable, t, f
 import type { Database } from "bun:sqlite";
 import { removeAllChildren } from "./helpers.js";
 import { getTheme } from "./theme.js";
-import { resolveAction } from "./keybindings.js";
+import { createKeyResolver } from "./keybindings.js";
 import { pushUndo, performUndo, performRedo } from "./undo.js";
 import { parseAddInput } from "./add-parser.js";
 import { parseCommand } from "./components/command-bar.js";
@@ -120,10 +120,10 @@ export async function launchTui(db: Database): Promise<void> {
       height: 1,
     });
 
-    // Color-coded syntax help
+    // Color-coded syntax help + keybinding hints
     const helpText = new TextRenderable(renderer, {
       id: "add-help",
-      content: t`  ${fg(theme.priorityHigh)("!pri")} ${fg(theme.fieldTag)("#tag")} ${fg(theme.fieldStatus)("@status")} ${fg(theme.fieldDue)("due:date")} ${fg(theme.fieldArea)("area:name")} ${fg(theme.fieldProject)("project:name")} ${fg(theme.fieldDuration)("dur:1h")}`,
+      content: t`  ${fg(theme.priorityHigh)("!pri")} ${fg(theme.fieldTag)("#tag")} ${fg(theme.fieldStatus)("@status")} ${fg(theme.fieldDue)("due:date")} ${fg(theme.fieldArea)("area:")} ${fg(theme.fieldProject)("proj:")} ${fg(theme.fieldDuration)("dur:")}  ${fg(theme.muted)("Shift+Enter: add another")}`,
       width: "100%",
       height: 1,
     });
@@ -173,6 +173,12 @@ export async function launchTui(db: Database): Promise<void> {
               // ignore
             }
           }
+          if (key.shift) {
+            // Shift+Enter: add another — clear input and stay open
+            input.value = "";
+            updateHints("");
+            return;
+          }
           inputMode = false;
           refreshBoard();
         } else if (key.name === "escape") {
@@ -197,7 +203,8 @@ export async function launchTui(db: Database): Promise<void> {
     board.refresh();
     renderer.root.add(board.container);
     renderer.root.add(overlay);
-    input.focus();
+    // Defer focus so the triggering keypress (t) doesn't get typed into the input
+    setTimeout(() => input.focus(), 0);
   }
 
   const COMMANDS = [
@@ -220,8 +227,12 @@ export async function launchTui(db: Database): Promise<void> {
       .slice(0, 5);
   }
 
+  const commandHistory: string[] = [];
+  let historyIndex = -1;
+
   function showCommandInput(prefill: string) {
     inputMode = true;
+    historyIndex = -1;
 
     const cmdContainer = new BoxRenderable(renderer, {
       id: "cmd-input-container",
@@ -287,10 +298,35 @@ export async function launchTui(db: Database): Promise<void> {
           updateCommandHints(input.value);
           return;
         }
+        if (key.name === "up") {
+          key.preventDefault();
+          if (commandHistory.length > 0 && historyIndex < commandHistory.length - 1) {
+            historyIndex++;
+            input.value = commandHistory[historyIndex];
+            updateCommandHints(input.value);
+          }
+          return;
+        }
+        if (key.name === "down") {
+          key.preventDefault();
+          if (historyIndex > 0) {
+            historyIndex--;
+            input.value = commandHistory[historyIndex];
+          } else {
+            historyIndex = -1;
+            input.value = "";
+          }
+          updateCommandHints(input.value);
+          return;
+        }
         if (key.name === "return") {
           const raw = input.value.trim();
           inputMode = false;
           if (raw) {
+            // Save to history (most recent first, no duplicates at top)
+            if (commandHistory[0] !== raw) {
+              commandHistory.unshift(raw);
+            }
             // Prepend / since the prompt already shows it
             await executeCommand("/" + raw);
           } else {
@@ -426,6 +462,13 @@ export async function launchTui(db: Database): Promise<void> {
     textLine("", theme.fg);
     textLine("  j/\u2193     Navigate down", theme.fg);
     textLine("  k/\u2191     Navigate up", theme.fg);
+    textLine("  gg       Go to top", theme.fg);
+    textLine("  G        Go to bottom", theme.fg);
+    textLine("  {n}G     Go to line n", theme.fg);
+    textLine("  Ctrl+d   Half page down", theme.fg);
+    textLine("  Ctrl+u   Half page up", theme.fg);
+    textLine("  Ctrl+f   Page down", theme.fg);
+    textLine("  Ctrl+b   Page up", theme.fg);
     textLine("  Tab      Next area group", theme.fg);
     textLine("  S-Tab    Previous area group", theme.fg);
     textLine("  t        Add new task", theme.fg);
@@ -434,6 +477,7 @@ export async function launchTui(db: Database): Promise<void> {
     textLine("  e        Edit in editor", theme.fg);
     textLine("  u        Undo", theme.fg);
     textLine("  U        Redo", theme.fg);
+    textLine("  D        Toggle done tasks", theme.fg);
     textLine("  Enter    View task detail", theme.fg);
     textLine("  /        Open command bar", theme.fg);
     textLine("  ?        Show this help", theme.fg);
@@ -456,7 +500,8 @@ export async function launchTui(db: Database): Promise<void> {
 
     // Color legend
     textLine("Field Colors:", theme.accent);
-    styledLine(t`  ${fg(theme.priorityHigh)("!priority")}  ${fg(theme.fieldTag)("#tag")}  ${fg(theme.fieldStatus)("@status")}  ${fg(theme.fieldDue)("due:date")}  ${fg(theme.fieldArea)("area:name")}  ${fg(theme.fieldProject)("project:name")}  ${fg(theme.fieldDuration)("dur:time")}`);
+    styledLine(t`  ${fg(theme.priorityHigh)("!priority")}  ${fg(theme.fieldTag)("#tag")}  ${fg(theme.fieldStatus)("@status")}  ${fg(theme.fieldDue)("due:date")}`);
+    styledLine(t`  ${fg(theme.fieldArea)("area:name")}  ${fg(theme.fieldProject)("proj:name")}  ${fg(theme.fieldDuration)("dur:time")}`);
     textLine("", theme.fg);
     textLine("  Press any key to close", theme.muted);
 
@@ -646,11 +691,14 @@ export async function launchTui(db: Database): Promise<void> {
     renderer.keyInput.on("keypress", syncHandler);
   }
 
+  const keyResolver = createKeyResolver();
+
   renderer.keyInput.on("keypress", async (key: KeyEvent) => {
     if (inputMode) return;
 
-    const action = resolveAction(key);
-    if (!action) return;
+    const result = keyResolver.resolve(key);
+    if (!result) return;
+    const { action } = result;
 
     switch (action) {
       case "quit":
@@ -668,7 +716,7 @@ export async function launchTui(db: Database): Promise<void> {
         break;
 
       case "help":
-        showCommandInput("help");
+        showHelp();
         break;
 
       case "redo": {
@@ -725,6 +773,11 @@ export async function launchTui(db: Database): Promise<void> {
         showSyncOverlay();
         break;
 
+      case "toggle_done":
+        board.state.showDone = !board.state.showDone;
+        refreshBoard();
+        break;
+
       case "escape":
         if (board.state.filterText) {
           board.state.filterText = "";
@@ -734,7 +787,7 @@ export async function launchTui(db: Database): Promise<void> {
         break;
 
       default: {
-        const needsRefresh = handleBoardAction(board.state, action);
+        const needsRefresh = handleBoardAction(board.state, result);
         if (needsRefresh) refreshBoard();
       }
     }

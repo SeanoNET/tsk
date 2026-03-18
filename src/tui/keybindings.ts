@@ -16,32 +16,113 @@ export type Action =
   | "next_section"
   | "prev_section"
   | "sync_status"
+  | "toggle_done"
+  | "goto_top"
+  | "goto_bottom"
+  | "goto_line"
+  | "page_down"
+  | "page_up"
+  | "half_page_down"
+  | "half_page_up"
   | "escape";
 
-export function resolveAction(key: KeyEvent): Action | null {
-  // Ctrl+C / q to quit
-  if (key.ctrl && key.name === "c") return "quit";
-  if (key.name === "q") return "quit";
+export interface ActionResult {
+  action: Action;
+  count?: number;
+}
 
-  // Navigation
-  if (key.name === "j" || key.name === "down") return "navigate_down";
-  if (key.name === "k" || key.name === "up") return "navigate_up";
+/** Stateful vim motion resolver — handles number prefixes and multi-key sequences */
+export function createKeyResolver() {
+  let countBuf = "";
+  let pendingG = false;
 
-  // Actions
-  if (key.name === "return") return "select";
-  if (key.name === "t") return "add_task";
-  if (key.name === "d") return "mark_done";
-  if (key.name === "x") return "delete_task";
-  if (key.name === "e") return "edit_task";
-  if (key.name === "u" && key.shift) return "redo";
-  if (key.name === "u") return "undo";
-  if (key.name === "/") return "command";
-  if (key.name === "?") return "help";
-  if (key.name === "s" && key.shift) return "sync_status";
-  if (key.name === "escape") return "escape";
+  function reset() {
+    countBuf = "";
+    pendingG = false;
+  }
 
-  // Section cycling
-  if (key.name === "tab") return key.shift ? "prev_section" : "next_section";
+  function resolve(key: KeyEvent): ActionResult | null {
+    // Ctrl+C always quits
+    if (key.ctrl && key.name === "c") { reset(); return { action: "quit" }; }
 
-  return null;
+    // Ctrl+d / Ctrl+u — page movement
+    if (key.ctrl && key.name === "d") { const c = consumeCount(); return { action: "half_page_down", count: c }; }
+    if (key.ctrl && key.name === "u") { const c = consumeCount(); return { action: "half_page_up", count: c }; }
+    if (key.ctrl && key.name === "f") { const c = consumeCount(); return { action: "page_down", count: c }; }
+    if (key.ctrl && key.name === "b") { const c = consumeCount(); return { action: "page_up", count: c }; }
+
+    // Accumulate digit prefix (0 only counts if we already have digits)
+    if (!key.ctrl && !key.shift && key.name >= "0" && key.name <= "9") {
+      if (key.name === "0" && countBuf === "") {
+        // 0 without prefix is not a count — ignore
+      } else {
+        countBuf += key.name;
+        pendingG = false;
+        return null;
+      }
+    }
+
+    // gg = goto top
+    if (key.name === "g" && !key.shift) {
+      if (pendingG) {
+        // gg
+        reset();
+        return { action: "goto_top" };
+      }
+      pendingG = true;
+      return null;
+    }
+
+    // {n}G = goto line, G = goto bottom
+    if (key.name === "g" && key.shift) {
+      pendingG = false;
+      const c = consumeCount();
+      if (c !== undefined) {
+        return { action: "goto_line", count: c };
+      }
+      return { action: "goto_bottom" };
+    }
+
+    // Any other key after pending g — discard the g and process normally
+    if (pendingG) {
+      pendingG = false;
+      countBuf = "";
+    }
+
+    const count = consumeCount();
+
+    // Navigation with optional count
+    if (key.name === "j" || key.name === "down") return { action: "navigate_down", count };
+    if (key.name === "k" || key.name === "up") return { action: "navigate_up", count };
+
+    // Actions — check shift variants first
+    if (key.name === "q") return { action: "quit" };
+    if (key.name === "return") return { action: "select" };
+    if (key.name === "t") return { action: "add_task" };
+    if (key.name === "s" && key.shift) return { action: "sync_status" };
+    if (key.name === "d" && key.shift) return { action: "toggle_done" };
+    if (key.name === "d") return { action: "mark_done" };
+    if (key.name === "x") return { action: "delete_task" };
+    if (key.name === "e") return { action: "edit_task" };
+    if (key.name === "u" && key.shift) return { action: "redo" };
+    if (key.name === "u") return { action: "undo" };
+    if (key.name === "/") return { action: "command" };
+    if (key.name === "?") return { action: "help" };
+    if (key.name === "escape") { reset(); return { action: "escape" }; }
+
+    // Section cycling
+    if (key.name === "tab") return { action: key.shift ? "prev_section" : "next_section" };
+
+    reset();
+    return null;
+  }
+
+  function consumeCount(): number | undefined {
+    if (countBuf === "") return undefined;
+    const n = parseInt(countBuf, 10);
+    countBuf = "";
+    return n;
+  }
+
+  return { resolve };
 }

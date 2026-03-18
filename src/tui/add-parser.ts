@@ -72,6 +72,8 @@ export function parseAddInput(raw: string): ParsedAdd {
       overrides.area = part.slice(5);
     } else if (/^project:/i.test(part) && part.length > 8) {
       overrides.project = part.slice(8);
+    } else if (/^proj:/i.test(part) && part.length > 5) {
+      overrides.project = part.slice(5);
     } else if (/^dur:/i.test(part) && part.length > 4) {
       const durStr = part.slice(4);
       overrides.duration = normalizeDuration(durStr);

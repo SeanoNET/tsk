@@ -257,7 +257,12 @@ export const gitCommand = defineCommand({
     status: statusCommand,
     disconnect: disconnectCommand,
   },
-  async run({ args }) {
+  async run({ args, rawArgs }) {
+    // If a subcommand was given (setup, status, disconnect), don't also sync
+    const subcommands = ["setup", "status", "disconnect"];
+    const hasSubCommand = rawArgs.some((a: string) => subcommands.includes(a));
+    if (hasSubCommand) return;
+
     try {
       const db = await ensureInitialized();
       const config = await readConfig();

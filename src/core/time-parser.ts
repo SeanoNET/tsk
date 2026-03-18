@@ -81,7 +81,7 @@ export function parseTime(
   // Named times
   switch (raw) {
     case "now":
-      return clampToWorkHours(now, work).toISO()!;
+      return now.toISO()!;
     case "today":
       return clampToWorkHours(now, work).toISO()!;
     case "tonight":
@@ -141,10 +141,10 @@ function applyDuration(
   switch (u) {
     case "m":
       result = from.plus({ minutes: amount });
-      return clampToWorkHours(result, work).toISO()!;
+      return result.toISO()!;
     case "h":
       result = from.plus({ hours: amount });
-      return clampToWorkHours(result, work).toISO()!;
+      return result.toISO()!;
     case "d":
       result = from.plus({ days: amount });
       result = skipWeekend(result);

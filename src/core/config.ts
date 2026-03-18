@@ -35,9 +35,14 @@ export const DEFAULT_CONFIG: TskConfig = {
 
 export async function readConfig(): Promise<TskConfig> {
   const file = Bun.file(configPath());
-  if (!(await file.exists())) return { ...DEFAULT_CONFIG };
+  if (!(await file.exists())) return structuredClone(DEFAULT_CONFIG);
   const text = await file.text();
-  return parse(text) as unknown as TskConfig;
+  const parsed = parse(text) as Record<string, unknown>;
+  // Deep merge with defaults so missing sections (e.g. [sync]) don't crash
+  return {
+    core: { ...DEFAULT_CONFIG.core, ...(parsed.core as Record<string, unknown> ?? {}) },
+    sync: { ...DEFAULT_CONFIG.sync, ...(parsed.sync as Record<string, unknown> ?? {}) },
+  } as TskConfig;
 }
 
 export async function writeConfig(config: TskConfig): Promise<void> {

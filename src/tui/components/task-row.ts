@@ -74,18 +74,24 @@ export function createTaskRow(
     ? task.tags.map(tag => `#${tag}`).join(" ")
     : "";
 
+  // Due date indicator
+  const now = DateTime.now();
+  const isOverdue = !isDone && task.due && DateTime.fromISO(task.due) < now.startOf("day");
+  const dueStr = isOverdue ? " OVERDUE" : "";
+
   // Age
   const age = formatAge(task.created);
 
-  // Assemble: id sym title priority tags age
+  // Assemble: id sym title priority tags due age
   const idPart = fg(opts.selected ? theme.selectedFg : theme.muted)(idPadded);
   const symPart = fg(symColor)(sym);
   const priPart = priStr !== " " ? fg(priColor)(priStr) : " ";
+  const duePart = dueStr ? fg(theme.error)(dueStr) + " " : "";
   const agePart = fg(theme.muted)(age);
 
   const content = tagStr
-    ? t`${idPart} ${symPart} ${titlePart}${priPart}${fg(theme.fieldTag)(tagStr)} ${agePart}`
-    : t`${idPart} ${symPart} ${titlePart}${priPart}${agePart}`;
+    ? t`${idPart} ${symPart} ${titlePart}${priPart}${fg(theme.fieldTag)(tagStr)} ${duePart}${agePart}`
+    : t`${idPart} ${symPart} ${titlePart}${priPart}${duePart}${agePart}`;
 
   row.add(
     new TextRenderable(renderer, {

@@ -26,12 +26,12 @@ export function createStatusBar(
 
   const left = new TextRenderable(renderer, {
     id: "status-left",
-    content: t`${fg(theme.success)(`${pct}% done`)} ${fg(theme.muted)("|")} ${fg(theme.success)(`${stats.done} done`)} ${fg(theme.muted)("\u00B7")} ${fg(theme.accent)(`${stats.inProgress} in-progress`)} ${fg(theme.muted)("\u00B7")} ${fg(theme.warning)(`${stats.pending} pending`)}`,
+    content: t` ${fg(theme.success)(`${pct}% done`)} ${fg(theme.muted)("|")} ${fg(theme.success)(`${stats.done} done`)} ${fg(theme.muted)("\u00B7")} ${fg(theme.accent)(`${stats.inProgress} in-progress`)} ${fg(theme.muted)("\u00B7")} ${fg(theme.warning)(`${stats.pending} pending`)}`,
   });
 
   const right = new TextRenderable(renderer, {
     id: "status-right",
-    content: t`${bold(fg(theme.fg)("?"))} ${fg(theme.muted)("Help")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("/"))} ${fg(theme.muted)("Command")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("t"))} ${fg(theme.muted)("Task")} `,
+    content: t` ${bold(fg(theme.fg)("?"))} ${fg(theme.muted)("Help")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("/"))} ${fg(theme.muted)("Command")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("t"))} ${fg(theme.muted)("Task")} `,
   });
 
   bar.add(left);

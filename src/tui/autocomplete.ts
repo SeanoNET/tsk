@@ -75,13 +75,14 @@ export function getSuggestions(db: Database, currentWord: string): Suggestion[] 
   }
 
   // Project suggestions
-  if (lower.startsWith("project:")) {
-    const prefix = lower.slice(8);
+  if (lower.startsWith("project:") || lower.startsWith("proj:")) {
+    const prefix = lower.startsWith("project:") ? lower.slice(8) : lower.slice(5);
+    const short = lower.startsWith("proj:");
     const existing = getExistingProjects(db);
     return existing
       .filter((p) => p.toLowerCase().startsWith(prefix))
       .slice(0, 5)
-      .map((p) => ({ token: `project:${p}`, label: `project:${p}` }));
+      .map((p) => ({ token: `${short ? "proj" : "project"}:${p}`, label: `proj:${p}` }));
   }
 
   // Duration suggestions
@@ -95,19 +96,20 @@ export function getSuggestions(db: Database, currentWord: string): Suggestion[] 
     ];
   }
 
-  return [];
+  // No contextual match — show the default hints so they stay visible
+  return getHints();
 }
 
 /** Show token suggestions when between words */
 function getHints(): Suggestion[] {
   return [
-    { token: "!high", label: "!priority" },
-    { token: "#", label: "#tag" },
-    { token: "@next", label: "@status" },
-    { token: "due:", label: "due:time" },
-    { token: "area:", label: "area:" },
-    { token: "project:", label: "project:" },
-    { token: "dur:", label: "dur:30m" },
+    { token: "!high", label: "\x1b[31m!pri\x1b[0m\x1b[2m" },
+    { token: "#", label: "\x1b[36m#tag\x1b[0m\x1b[2m" },
+    { token: "@next", label: "\x1b[33m@status\x1b[0m\x1b[2m" },
+    { token: "due:", label: "\x1b[35mdue:date\x1b[0m\x1b[2m" },
+    { token: "area:", label: "\x1b[34marea:\x1b[0m\x1b[2m" },
+    { token: "project:", label: "\x1b[34mproj:\x1b[0m\x1b[2m" },
+    { token: "dur:", label: "\x1b[34mdur:\x1b[0m\x1b[2m" },
   ];
 }
 

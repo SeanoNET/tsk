@@ -11,6 +11,8 @@ import { processCommand } from "./commands/process.js";
 import { uiCommand } from "./commands/ui.js";
 import { upgradeCommand } from "./commands/upgrade.js";
 import { gitCommand } from "./commands/sync.js";
+import { authCommand } from "./commands/auth.js";
+import { syncCommand } from "./commands/graph-sync.js";
 import { checkForUpdate } from "../core/update-check.js";
 
 export const mainCommand = defineCommand({
@@ -31,6 +33,8 @@ export const mainCommand = defineCommand({
     ui: uiCommand,
     upgrade: upgradeCommand,
     git: gitCommand,
+    auth: authCommand,
+    sync: syncCommand,
   },
   run({ rawArgs }) {
     const hasSubCommand = rawArgs.some((arg: string) => !arg.startsWith("-"));
