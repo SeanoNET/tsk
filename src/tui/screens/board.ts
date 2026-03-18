@@ -16,6 +16,7 @@ import { createCommandBar, type CommandBarResult } from "../components/command-b
 import { parseFilterString } from "../components/command-bar.js";
 import type { TskTheme } from "../theme.js";
 import type { Action } from "../keybindings.js";
+import { createSyncIndicator, type SyncState } from "../components/sync-indicator.js";
 
 interface AreaGroup {
   name: string;
@@ -28,6 +29,7 @@ export interface BoardState {
   flatTasks: Task[];
   selectedIndex: number;
   filterText: string;
+  syncState?: SyncState;
 }
 
 const STATUS_SORT_ORDER: Record<string, number> = {
@@ -159,6 +161,11 @@ export function createBoardScreen(
       content: t` ${bold(fg(theme.headerFg)("tsk"))}  ${fg(theme.muted)(filterLabel)}`,
       flexGrow: 1,
     }));
+
+    // Sync indicator (right-aligned in header)
+    if (state.syncState && state.syncState.status !== "disabled") {
+      header.add(createSyncIndicator(renderer, theme, state.syncState));
+    }
 
     // Rebuild content
     removeAllChildren(content);

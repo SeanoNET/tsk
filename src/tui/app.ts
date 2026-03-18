@@ -19,7 +19,10 @@ import { getSuggestions } from "./autocomplete.js";
 import { handleTabComplete, resetTabState } from "./tab-complete.js";
 import { readTaskFile } from "../core/markdown.js";
 import { indexTask } from "../core/db.js";
-import { autoCommit } from "../core/git.js";
+import { autoCommit, gitRemoteRemove, gitRemoteGetUrl } from "../core/git.js";
+import { loadSyncState, formatRelativeTime } from "./components/sync-indicator.js";
+import { syncNow } from "../core/sync.js";
+import { writeConfig } from "../core/config.js";
 
 function parseDurMinutes(dur?: string): number {
   if (!dur) return 30;
@@ -44,6 +47,18 @@ export async function launchTui(db: Database): Promise<void> {
   let inputMode = false;
 
   const board = createBoardScreen(renderer, db, theme);
+
+  // Load sync state in background and update header
+  function refreshSyncState() {
+    loadSyncState()
+      .then((syncState) => {
+        board.state.syncState = syncState;
+        board.refresh();
+        removeAllChildren(renderer.root);
+        renderer.root.add(board.container);
+      })
+      .catch(() => {}); // Ignore errors
+  }
 
   function refreshBoard() {
     removeAllChildren(renderer.root);
@@ -545,6 +560,92 @@ export async function launchTui(db: Database): Promise<void> {
     renderer.keyInput.on("keypress", detailHandler);
   }
 
+  function showSyncOverlay() {
+    const syncState = board.state.syncState;
+    if (!syncState || syncState.status === "disabled") {
+      // Not configured — show a message briefly
+      return;
+    }
+
+    const overlay = new BoxRenderable(renderer, {
+      id: "sync-overlay",
+      width: "100%",
+      height: "100%",
+      position: "absolute",
+      justifyContent: "center",
+      alignItems: "center",
+    });
+
+    const dialog = new BoxRenderable(renderer, {
+      id: "sync-dialog",
+      flexDirection: "column",
+      width: 44,
+      backgroundColor: theme.headerBg,
+      border: true,
+      borderColor: theme.fieldSync,
+      borderStyle: "single",
+      padding: 1,
+    });
+
+    let lineIdx = 0;
+    function textLine(text: string, color: string) {
+      const id = `sync-line-${lineIdx++}`;
+      dialog.add(new TextRenderable(renderer, { id, content: t`${fg(color)(text)}`, width: "100%", height: 1 }));
+    }
+
+    textLine("Sync Status", theme.fieldSync);
+    textLine("", theme.fg);
+    textLine(`  Remote:  ${syncState.remoteUrl}`, theme.fg);
+    textLine(`  Branch:  ${syncState.branch}`, theme.fg);
+    textLine(`  Last:    ${formatRelativeTime(syncState.lastSync)}`, theme.fg);
+    textLine(`  Local:   ${syncState.localPending} pending`, theme.fg);
+    textLine(`  Remote:  ${syncState.remotePending} pending`, theme.fg);
+    if (syncState.error) {
+      textLine(`  Error:   ${syncState.error}`, theme.error);
+    } else {
+      textLine(`  Status:  ok`, theme.success);
+    }
+    textLine("", theme.fg);
+    textLine("  [Enter] Sync now  [d] Disconnect  [Esc] Close", theme.muted);
+
+    overlay.add(dialog);
+
+    removeAllChildren(renderer.root);
+    board.refresh();
+    renderer.root.add(board.container);
+    renderer.root.add(overlay);
+
+    const syncHandler = async (key: KeyEvent) => {
+      if (key.name === "escape") {
+        renderer.keyInput.removeListener("keypress", syncHandler);
+        refreshBoard();
+      } else if (key.name === "return") {
+        renderer.keyInput.removeListener("keypress", syncHandler);
+        // Trigger manual sync
+        board.state.syncState = { ...syncState, status: "syncing" };
+        refreshBoard();
+        try {
+          await syncNow(db);
+        } catch { /* ignore */ }
+        refreshSyncState();
+      } else if (key.name === "d") {
+        renderer.keyInput.removeListener("keypress", syncHandler);
+        try {
+          const config = await readConfig();
+          const remote = config.sync.remote ?? "origin";
+          await gitRemoteRemove(remote);
+          config.sync.enabled = false;
+          config.sync.remoteUrl = undefined;
+          config.sync.autoSync = false;
+          await writeConfig(config);
+          board.state.syncState = { ...syncState, status: "disabled" };
+        } catch { /* ignore */ }
+        refreshBoard();
+      }
+    };
+    renderer.keyInput.on("keypress", syncHandler);
+  }
+
   renderer.keyInput.on("keypress", async (key: KeyEvent) => {
     if (inputMode) return;
 
@@ -620,6 +721,10 @@ export async function launchTui(db: Database): Promise<void> {
         break;
       }
 
+      case "sync_status":
+        showSyncOverlay();
+        break;
+
       case "escape":
         if (board.state.filterText) {
           board.state.filterText = "";
@@ -642,4 +747,5 @@ export async function launchTui(db: Database): Promise<void> {
   });
 
   refreshBoard();
+  refreshSyncState();
 }

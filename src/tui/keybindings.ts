@@ -15,6 +15,7 @@ export type Action =
   | "help"
   | "next_section"
   | "prev_section"
+  | "sync_status"
   | "escape";
 
 export function resolveAction(key: KeyEvent): Action | null {
@@ -36,6 +37,7 @@ export function resolveAction(key: KeyEvent): Action | null {
   if (key.name === "u") return "undo";
   if (key.name === "/") return "command";
   if (key.name === "?") return "help";
+  if (key.name === "s" && key.shift) return "sync_status";
   if (key.name === "escape") return "escape";
 
   // Section cycling

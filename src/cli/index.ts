@@ -10,6 +10,7 @@ import { deleteCommand } from "./commands/delete.js";
 import { processCommand } from "./commands/process.js";
 import { uiCommand } from "./commands/ui.js";
 import { upgradeCommand } from "./commands/upgrade.js";
+import { gitCommand } from "./commands/sync.js";
 import { checkForUpdate } from "../core/update-check.js";
 
 export const mainCommand = defineCommand({
@@ -29,6 +30,7 @@ export const mainCommand = defineCommand({
     process: processCommand,
     ui: uiCommand,
     upgrade: upgradeCommand,
+    git: gitCommand,
   },
   run({ rawArgs }) {
     const hasSubCommand = rawArgs.some((arg: string) => !arg.startsWith("-"));

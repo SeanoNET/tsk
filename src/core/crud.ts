@@ -6,6 +6,7 @@ import { indexTask, removeTask, queryTasks, findTaskByPrefix, type TaskFilter } 
 import { autoCommit } from "./git.js";
 import { taskFilePath, tasksDir } from "./paths.js";
 import { unlink } from "fs/promises";
+import { triggerAutoSync } from "./sync.js";
 
 export async function createTask(
   db: Database,
@@ -20,6 +21,7 @@ export async function createTask(
   await writeTaskFile(task);
   indexTask(db, task, filePath);
   await autoCommit("create", task.title);
+  triggerAutoSync(db);
   return task;
 }
 
@@ -52,6 +54,7 @@ export async function updateTask(
   await writeTaskFile(updated);
   indexTask(db, updated, taskFilePath(updated.id));
   await autoCommit("edit", updated.title);
+  triggerAutoSync(db);
   return updated;
 }
 
@@ -61,6 +64,7 @@ export async function deleteTask(db: Database, idOrPrefix: string): Promise<Task
   await unlink(filePath);
   removeTask(db, task.id);
   await autoCommit("delete", task.title);
+  triggerAutoSync(db);
   return task;
 }
 
