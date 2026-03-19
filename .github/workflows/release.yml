@@ -36,7 +36,7 @@ jobs:
             runner: ubuntu-24.04-arm
             artifact: tsk-linux-arm64
           - target: bun-darwin-x64
-            runner: macos-13
+            runner: macos-14
             artifact: tsk-darwin-x64
           - target: bun-darwin-arm64
             runner: macos-14
