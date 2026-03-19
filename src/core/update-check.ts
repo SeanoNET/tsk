@@ -5,6 +5,7 @@ import { tskDir } from "./paths.js";
 interface UpdateCache {
   lastCheck: string;
   latestVersion: string;
+  previousVersion?: string;
 }
 
 const CACHE_FILE = "update-check.json";
@@ -47,6 +48,16 @@ export function checkForUpdate(currentVersion: string): void {
 
   const cache = readCache();
 
+  // Show "just upgraded" message if previousVersion is set and current matches latest
+  if (cache?.previousVersion && compareVersions(currentVersion, cache.previousVersion) > 0) {
+    console.error(
+      `Upgraded tsk: v${cache.previousVersion} → v${currentVersion}`
+    );
+    // Clear previousVersion so we only show this once
+    writeCache({ ...cache, previousVersion: undefined });
+    return;
+  }
+
   if (cache) {
     const elapsed = Date.now() - new Date(cache.lastCheck).getTime();
     if (elapsed < CHECK_INTERVAL_MS) {
@@ -60,7 +71,7 @@ export function checkForUpdate(currentVersion: string): void {
     }
   }
 
-  // Fire-and-forget background check
+  // Background check — print immediately if a new version is found
   fetch("https://api.github.com/repos/SeanoNET/tsk/releases/latest", {
     headers: { Accept: "application/vnd.github.v3+json" },
     signal: AbortSignal.timeout(5000),
@@ -70,6 +81,11 @@ export function checkForUpdate(currentVersion: string): void {
       const latest = (data.tag_name as string || "").replace(/^v/, "");
       if (latest) {
         writeCache({ lastCheck: new Date().toISOString(), latestVersion: latest });
+        if (compareVersions(latest, currentVersion) > 0) {
+          console.error(
+            `A new version of tsk is available (v${latest}). Run 'tsk upgrade' to update.`
+          );
+        }
       }
     })
     .catch(() => {

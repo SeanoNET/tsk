@@ -94,6 +94,7 @@ export function removeTask(db: Database, id: string): void {
 
 export interface TaskFilter {
   status?: TaskStatus;
+  excludeStatus?: TaskStatus[];
   priority?: TaskPriority;
   area?: string;
   project?: string;
@@ -110,6 +111,11 @@ export function queryTasks(db: Database, filter: TaskFilter = {}): Task[] {
   if (filter.status) {
     conditions.push("status = $status");
     params.$status = filter.status;
+  }
+  if (filter.excludeStatus?.length) {
+    const placeholders = filter.excludeStatus.map((_, i) => `$excl${i}`);
+    conditions.push(`status NOT IN (${placeholders.join(", ")})`);
+    filter.excludeStatus.forEach((s, i) => { params[`$excl${i}`] = s; });
   }
   if (filter.priority) {
     conditions.push("priority = $priority");

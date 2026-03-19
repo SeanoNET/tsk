@@ -31,7 +31,7 @@ export function createStatusBar(
 
   const right = new TextRenderable(renderer, {
     id: "status-right",
-    content: t` ${bold(fg(theme.fg)("?"))} ${fg(theme.muted)("Help")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("/"))} ${fg(theme.muted)("Command")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("t"))} ${fg(theme.muted)("Task")} `,
+    content: t` ${bold(fg(theme.fg)("?"))} ${fg(theme.muted)("Help")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("P"))} ${fg(theme.muted)("Command")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("t"))} ${fg(theme.muted)("Task")} `,
   });
 
   bar.add(left);

@@ -11,7 +11,9 @@ import {
   handleBoardAction,
   getSelectedTask,
 } from "./screens/board.js";
-import { completeTask, deleteTask, createTask, getTask } from "../core/crud.js";
+import { createTaskRow } from "./components/task-row.js";
+import { completeTask, reopenTask, deleteTask, createTask, getTask } from "../core/crud.js";
+import type { Task } from "../core/task.js";
 import { readConfig } from "../core/config.js";
 import { taskFilePath } from "../core/paths.js";
 import { suggestScheduledTime } from "../core/scheduler.js";
@@ -53,9 +55,11 @@ export async function launchTui(db: Database): Promise<void> {
     loadSyncState()
       .then((syncState) => {
         board.state.syncState = syncState;
-        board.refresh();
-        removeAllChildren(renderer.root);
-        renderer.root.add(board.container);
+        if (!inputMode) {
+          board.refresh();
+          removeAllChildren(renderer.root);
+          renderer.root.add(board.container);
+        }
       })
       .catch(() => {}); // Ignore errors
   }
@@ -111,19 +115,10 @@ export async function launchTui(db: Database): Promise<void> {
       content: t`${fg(theme.success)("+")} `,
     }));
 
-    // Autocomplete suggestions (dynamic)
-    const hintsRow = new TextRenderable(renderer, {
+    // Autocomplete suggestions (dynamic, colored)
+    const hintsRow = new BoxRenderable(renderer, {
       id: "add-hints",
-      content: "",
-      fg: theme.muted,
-      width: "100%",
-      height: 1,
-    });
-
-    // Color-coded syntax help + keybinding hints
-    const helpText = new TextRenderable(renderer, {
-      id: "add-help",
-      content: t`  ${fg(theme.priorityHigh)("!pri")} ${fg(theme.fieldTag)("#tag")} ${fg(theme.fieldStatus)("@status")} ${fg(theme.fieldDue)("due:date")} ${fg(theme.fieldArea)("area:")} ${fg(theme.fieldProject)("proj:")} ${fg(theme.fieldDuration)("dur:")}  ${fg(theme.muted)("Shift+Enter: add another")}`,
+      flexDirection: "row",
       width: "100%",
       height: 1,
     });
@@ -132,10 +127,20 @@ export async function launchTui(db: Database): Promise<void> {
       const words = value.split(/\s+/);
       const lastWord = words[words.length - 1] || "";
       const suggestions = getSuggestions(db, lastWord);
+      removeAllChildren(hintsRow);
       if (suggestions.length > 0) {
-        hintsRow.content = `  ${suggestions.map((s) => s.label).join("  ")}`;
-      } else {
-        hintsRow.content = "";
+        hintsRow.add(new TextRenderable(renderer, { id: "hint-pad", content: "  " }));
+        for (let i = 0; i < suggestions.length; i++) {
+          const s = suggestions[i];
+          const color = s.colorKey ? theme[s.colorKey] : theme.muted;
+          hintsRow.add(new TextRenderable(renderer, {
+            id: `hint-${i}`,
+            content: t`${fg(color)(s.label)}`,
+          }));
+          if (i < suggestions.length - 1) {
+            hintsRow.add(new TextRenderable(renderer, { id: `hint-sep-${i}`, content: "  " }));
+          }
+        }
       }
     }
 
@@ -193,7 +198,6 @@ export async function launchTui(db: Database): Promise<void> {
     bar.add(input);
     dialog.add(bar);
     dialog.add(hintsRow);
-    dialog.add(helpText);
     updateHints("");
 
     overlay.add(dialog);
@@ -234,19 +238,35 @@ export async function launchTui(db: Database): Promise<void> {
     inputMode = true;
     historyIndex = -1;
 
-    const cmdContainer = new BoxRenderable(renderer, {
-      id: "cmd-input-container",
-      flexDirection: "column",
+    // Full-screen overlay positioned 1/3 from top
+    const overlay = new BoxRenderable(renderer, {
+      id: "cmd-overlay",
       width: "100%",
-      backgroundColor: theme.bg,
+      height: "100%",
+      position: "absolute",
+      flexDirection: "column",
+      alignItems: "center",
+      paddingTop: 2,
     });
 
+    // Dialog box with border — VS Code-style command palette
+    const dialog = new BoxRenderable(renderer, {
+      id: "cmd-dialog",
+      flexDirection: "column",
+      width: "50%",
+      backgroundColor: theme.headerBg,
+      border: true,
+      borderColor: theme.accent,
+      borderStyle: "single",
+      padding: 1,
+    });
+
+    // Input row with prompt
     const inputRow = new BoxRenderable(renderer, {
       id: "cmd-input-row",
       flexDirection: "row",
       width: "100%",
       height: 1,
-      backgroundColor: theme.bg,
     });
 
     const prompt = new TextRenderable(renderer, {
@@ -254,48 +274,47 @@ export async function launchTui(db: Database): Promise<void> {
       content: t`${fg(theme.accent)(">")} ${fg(theme.muted)("/")}`,
     });
 
-    const hintsRow = new TextRenderable(renderer, {
-      id: "cmd-hints",
-      content: "",
-      fg: theme.muted,
+    // Suggestion list below input
+    const suggestionsBox = new BoxRenderable(renderer, {
+      id: "cmd-suggestions",
+      flexDirection: "column",
       width: "100%",
-      height: 1,
     });
 
-    function updateCommandHints(value: string) {
-      // Prepend / for matching since the prompt already shows it
+    function updateSuggestions(value: string) {
       const suggestions = getCommandSuggestions("/" + value);
-      if (suggestions.length > 0) {
-        hintsRow.content = `  ${suggestions.join("  ")}`;
-      } else {
-        hintsRow.content = "";
+      removeAllChildren(suggestionsBox);
+      for (let i = 0; i < suggestions.length; i++) {
+        suggestionsBox.add(new TextRenderable(renderer, {
+          id: `cmd-sug-${i}`,
+          content: t`  ${fg(theme.muted)(suggestions[i])}`,
+          width: "100%",
+          height: 1,
+        }));
       }
     }
 
     const input = new InputRenderable(renderer, {
       id: "cmd-input",
-      placeholder: "command...",
-      backgroundColor: theme.bg,
+      placeholder: "type a command...",
+      backgroundColor: theme.headerBg,
       textColor: theme.fg,
       cursorColor: theme.accent,
-      focusedBackgroundColor: theme.bg,
+      focusedBackgroundColor: theme.headerBg,
       flexGrow: 1,
       onKeyDown: async (key) => {
         if (key.name === "tab") {
           key.preventDefault();
-          // Tab-complete: find first matching command
           const partial = "/" + input.value;
           const match = COMMANDS.find(c =>
             c.name.startsWith(partial.toLowerCase()) ||
             (c.alias && c.alias.startsWith(partial.toLowerCase()))
           );
           if (match) {
-            // Set input to command name without leading /
             input.value = match.name.slice(1);
-            // Add space for commands that take arguments
             if (match.name === "/filter") input.value += " ";
           }
-          updateCommandHints(input.value);
+          updateSuggestions(input.value);
           return;
         }
         if (key.name === "up") {
@@ -303,7 +322,7 @@ export async function launchTui(db: Database): Promise<void> {
           if (commandHistory.length > 0 && historyIndex < commandHistory.length - 1) {
             historyIndex++;
             input.value = commandHistory[historyIndex];
-            updateCommandHints(input.value);
+            updateSuggestions(input.value);
           }
           return;
         }
@@ -316,18 +335,16 @@ export async function launchTui(db: Database): Promise<void> {
             historyIndex = -1;
             input.value = "";
           }
-          updateCommandHints(input.value);
+          updateSuggestions(input.value);
           return;
         }
         if (key.name === "return") {
           const raw = input.value.trim();
           inputMode = false;
           if (raw) {
-            // Save to history (most recent first, no duplicates at top)
             if (commandHistory[0] !== raw) {
               commandHistory.unshift(raw);
             }
-            // Prepend / since the prompt already shows it
             await executeCommand("/" + raw);
           } else {
             refreshBoard();
@@ -336,37 +353,28 @@ export async function launchTui(db: Database): Promise<void> {
           inputMode = false;
           refreshBoard();
         } else {
-          setTimeout(() => updateCommandHints(input.value), 0);
+          setTimeout(() => updateSuggestions(input.value), 0);
         }
       },
     });
 
-    // Set prefill after creation (without leading /)
     if (prefill) {
       input.value = prefill;
     }
-    updateCommandHints(prefill);
 
     inputRow.add(prompt);
     inputRow.add(input);
-    cmdContainer.add(hintsRow);
-    cmdContainer.add(inputRow);
+    dialog.add(inputRow);
+    dialog.add(suggestionsBox);
+    updateSuggestions(prefill);
 
-    // Swap the command bar in board.container with the active input
-    board.refresh();
-    const children = board.container.getChildren();
-    // Children order: header(0), content(1), commandBar(2), statusBar(3)
-    if (children.length >= 4) {
-      removeAllChildren(board.container);
-      board.container.add(children[0]); // header
-      board.container.add(children[1]); // content
-      board.container.add(cmdContainer); // active command input
-      board.container.add(children[3]); // status bar
-    }
+    overlay.add(dialog);
 
+    // Render board behind the overlay
     removeAllChildren(renderer.root);
+    board.refresh();
     renderer.root.add(board.container);
-    // Defer focus so the triggering keypress (/) doesn't get typed into the input
+    renderer.root.add(overlay);
     setTimeout(() => input.focus(), 0);
   }
 
@@ -472,6 +480,7 @@ export async function launchTui(db: Database): Promise<void> {
     textLine("  Tab      Next area group", theme.fg);
     textLine("  S-Tab    Previous area group", theme.fg);
     textLine("  t        Add new task", theme.fg);
+    textLine("  Space    Toggle task done/undone", theme.fg);
     textLine("  d        Mark task done", theme.fg);
     textLine("  x        Delete task", theme.fg);
     textLine("  e        Edit in editor", theme.fg);
@@ -479,7 +488,7 @@ export async function launchTui(db: Database): Promise<void> {
     textLine("  U        Redo", theme.fg);
     textLine("  D        Toggle done tasks", theme.fg);
     textLine("  Enter    View task detail", theme.fg);
-    textLine("  /        Open command bar", theme.fg);
+    textLine("  P        Command palette", theme.fg);
     textLine("  ?        Show this help", theme.fg);
     textLine("  q        Quit", theme.fg);
     textLine("", theme.fg);
@@ -691,10 +700,49 @@ export async function launchTui(db: Database): Promise<void> {
     renderer.keyInput.on("keypress", syncHandler);
   }
 
+  let animating = false;
+
+  async function animateToggleDone(task: Task, markingDone: boolean): Promise<void> {
+    animating = true;
+    const title = task.title;
+    const totalChars = title.length;
+    const TOTAL_DURATION = 300; // ms
+    const FRAME_MS = Math.max(16, Math.floor(TOTAL_DURATION / Math.max(totalChars, 1)));
+
+    const idx = board.state.flatTasks.findIndex(t => t.id === task.id);
+
+    for (let i = 1; i <= totalChars; i++) {
+      const stChars = markingDone ? i : totalChars - i;
+
+      // Find the task row's text renderable in the content area and replace it
+      const children = board.container.getChildren();
+      const contentBox = children[1]; // content area
+      if (contentBox && idx >= 0) {
+        const rowChildren = contentBox.getChildren();
+        // Find the task row by id
+        const oldRowIdx = rowChildren.findIndex(c => c.id === `task-${task.id}`);
+        if (oldRowIdx >= 0) {
+          const oldRow = rowChildren[oldRowIdx];
+          const newRow = createTaskRow(renderer, task, theme, {
+            selected: idx === board.state.selectedIndex,
+            displayId: idx + 1,
+            strikethroughChars: stChars,
+          });
+          contentBox.insertBefore(newRow, oldRow);
+          contentBox.remove(oldRow.id);
+        }
+      }
+
+      await new Promise(resolve => setTimeout(resolve, FRAME_MS));
+    }
+
+    animating = false;
+  }
+
   const keyResolver = createKeyResolver();
 
   renderer.keyInput.on("keypress", async (key: KeyEvent) => {
-    if (inputMode) return;
+    if (inputMode || animating) return;
 
     const result = keyResolver.resolve(key);
     if (!result) return;
@@ -753,6 +801,27 @@ export async function launchTui(db: Database): Promise<void> {
             refreshBoard();
           } catch { /* ignore */ }
         }
+        break;
+      }
+
+      case "toggle_task_done": {
+        if (animating) break;
+        const task = getSelectedTask(board.state);
+        if (!task) break;
+        const isDone = task.status === "done";
+        try {
+          // Animate first, then persist
+          await animateToggleDone(task, !isDone);
+          const prevStatus = task.status;
+          if (isDone) {
+            await reopenTask(db, task.id);
+            pushUndo({ type: "complete", taskId: task.id, previousStatus: prevStatus });
+          } else {
+            await completeTask(db, task.id);
+            pushUndo({ type: "complete", taskId: task.id, previousStatus: prevStatus });
+          }
+          refreshBoard();
+        } catch { /* ignore */ }
         break;
       }
 

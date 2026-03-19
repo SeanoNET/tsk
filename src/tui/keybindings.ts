@@ -17,6 +17,7 @@ export type Action =
   | "prev_section"
   | "sync_status"
   | "toggle_done"
+  | "toggle_task_done"
   | "goto_top"
   | "goto_bottom"
   | "goto_line"
@@ -44,6 +45,9 @@ export function createKeyResolver() {
   function resolve(key: KeyEvent): ActionResult | null {
     // Ctrl+C always quits
     if (key.ctrl && key.name === "c") { reset(); return { action: "quit" }; }
+
+    // Shift+P — command palette
+    if (key.shift && key.name === "p") { reset(); return { action: "command" }; }
 
     // Ctrl+d / Ctrl+u — page movement
     if (key.ctrl && key.name === "d") { const c = consumeCount(); return { action: "half_page_down", count: c }; }
@@ -102,11 +106,12 @@ export function createKeyResolver() {
     if (key.name === "s" && key.shift) return { action: "sync_status" };
     if (key.name === "d" && key.shift) return { action: "toggle_done" };
     if (key.name === "d") return { action: "mark_done" };
+    if (key.name === "space") return { action: "toggle_task_done" };
     if (key.name === "x") return { action: "delete_task" };
     if (key.name === "e") return { action: "edit_task" };
     if (key.name === "u" && key.shift) return { action: "redo" };
     if (key.name === "u") return { action: "undo" };
-    if (key.name === "/") return { action: "command" };
+    // / removed — use Shift+P for command palette
     if (key.name === "?") return { action: "help" };
     if (key.name === "escape") { reset(); return { action: "escape" }; }
 

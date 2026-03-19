@@ -36,11 +36,10 @@ export const mainCommand = defineCommand({
     auth: authCommand,
     sync: syncCommand,
   },
-  run({ rawArgs }) {
-    const hasSubCommand = rawArgs.some((arg: string) => !arg.startsWith("-"));
-    if (!hasSubCommand) {
-      checkForUpdate(pkg.version);
-      showUsage(mainCommand);
-    }
+  setup() {
+    checkForUpdate(pkg.version);
+  },
+  run() {
+    showUsage(mainCommand);
   },
 });

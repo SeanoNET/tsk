@@ -78,12 +78,16 @@ export const upgradeCommand = defineCommand({
       process.exit(1);
     }
 
-    // Update the cache
+    // Update the cache with previousVersion so next run shows "just upgraded" message
     try {
       mkdirSync(tskDir(), { recursive: true });
       writeFileSync(
         join(tskDir(), "update-check.json"),
-        JSON.stringify({ lastCheck: new Date().toISOString(), latestVersion }, null, 2)
+        JSON.stringify({
+          lastCheck: new Date().toISOString(),
+          latestVersion,
+          previousVersion: currentVersion,
+        }, null, 2)
       );
     } catch {}
 

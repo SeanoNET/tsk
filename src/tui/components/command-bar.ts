@@ -96,7 +96,7 @@ export function createCommandBar(
 
   const prompt = new TextRenderable(renderer, {
     id: "command-prompt",
-    content: t`${fg(theme.accent)(">")} ${fg(theme.muted)("Type / or Tab for commands, ? for help")}`,
+    content: t`${fg(theme.accent)(">")} ${fg(theme.muted)("P for commands, ? for help")}`,
     flexGrow: 1,
   });
 

@@ -38,7 +38,7 @@ export function createTaskRow(
   renderer: RenderContext,
   task: Task,
   theme: TskTheme,
-  opts: { selected?: boolean; displayId: number }
+  opts: { selected?: boolean; displayId: number; strikethroughChars?: number }
 ): BoxRenderable {
   const row = new BoxRenderable(renderer, {
     id: `task-${task.id}`,
@@ -49,8 +49,13 @@ export function createTaskRow(
   });
 
   const isDone = task.status === "done" || task.status === "cancelled";
+  const stChars = opts.strikethroughChars;
+  const isAnimating = stChars !== undefined;
   const sym = STATUS_SYMBOLS[task.status] ?? "\u25A1";
   const symColor = statusColor(task.status, theme);
+  // During animation, override the symbol based on direction
+  const displaySym = isAnimating && stChars > 0 ? "\u2714" : sym;
+  const displaySymColor = isAnimating && stChars > 0 ? theme.success : symColor;
 
   // Display ID: right-aligned in 3-char column, with > prefix when selected
   const idStr = String(opts.displayId);
@@ -63,12 +68,6 @@ export function createTaskRow(
   // Priority indicator — uses priorityHigh (red) and priorityMedium (yellow)
   const priStr = task.priority === "high" ? " (!!) " : task.priority === "medium" ? " (!) " : " ";
   const priColor = task.priority === "high" ? theme.priorityHigh : task.priority === "medium" ? theme.priorityMedium : theme.muted;
-
-  // Build content using tagged template
-  const titlePart = isDone
-    ? fg(theme.muted)(strikethrough(task.title))
-    : fg(titleColor)(task.title);
-
   // Tags — uses fieldTag color (purple), consistent with #tag in add dialog
   const tagStr = task.tags?.length
     ? task.tags.map(tag => `#${tag}`).join(" ")
@@ -84,14 +83,27 @@ export function createTaskRow(
 
   // Assemble: id sym title priority tags due age
   const idPart = fg(opts.selected ? theme.selectedFg : theme.muted)(idPadded);
-  const symPart = fg(symColor)(sym);
-  const priPart = priStr !== " " ? fg(priColor)(priStr) : " ";
-  const duePart = dueStr ? fg(theme.error)(dueStr) + " " : "";
+  const symPart = fg(displaySymColor)(displaySym);
+  const priPart = fg(priColor)(priStr);
+  const duePart = dueStr ? fg(theme.error)(dueStr + " ") : "";
   const agePart = fg(theme.muted)(age);
 
-  const content = tagStr
-    ? t`${idPart} ${symPart} ${titlePart}${priPart}${fg(theme.fieldTag)(tagStr)} ${duePart}${agePart}`
-    : t`${idPart} ${symPart} ${titlePart}${priPart}${duePart}${agePart}`;
+  // Build title part — partial strikethrough for animation, full for done, plain otherwise
+  let content: any;
+  if (stChars !== undefined && stChars >= 0) {
+    const struckPart = fg(theme.muted)(strikethrough(task.title.slice(0, stChars)));
+    const restPart = fg(titleColor)(task.title.slice(stChars));
+    content = tagStr
+      ? t`${idPart} ${symPart} ${struckPart}${restPart}${priPart}${fg(theme.fieldTag)(tagStr)} ${duePart}${agePart}`
+      : t`${idPart} ${symPart} ${struckPart}${restPart}${priPart}${duePart}${agePart}`;
+  } else {
+    const titlePart = isDone
+      ? fg(theme.muted)(strikethrough(task.title))
+      : fg(titleColor)(task.title);
+    content = tagStr
+      ? t`${idPart} ${symPart} ${titlePart}${priPart}${fg(theme.fieldTag)(tagStr)} ${duePart}${agePart}`
+      : t`${idPart} ${symPart} ${titlePart}${priPart}${duePart}${agePart}`;
+  }
 
   row.add(
     new TextRenderable(renderer, {

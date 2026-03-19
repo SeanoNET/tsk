@@ -12,7 +12,6 @@ import { queryTasks, type TaskFilter } from "../../core/db.js";
 import type { Task, TaskStatus, TaskPriority } from "../../core/task.js";
 import { createTaskRow } from "../components/task-row.js";
 import { createStatusBar, type BoardStats } from "../components/status-bar.js";
-import { createCommandBar, type CommandBarResult } from "../components/command-bar.js";
 import { parseFilterString } from "../components/command-bar.js";
 import type { TskTheme } from "../theme.js";
 import type { Action, ActionResult } from "../keybindings.js";
@@ -128,7 +127,7 @@ export function createBoardScreen(
   renderer: RenderContext,
   db: Database,
   theme: TskTheme
-): { container: BoxRenderable; state: BoardState; commandBar: CommandBarResult; refresh: () => void } {
+): { container: BoxRenderable; state: BoardState; refresh: () => void } {
   const container = new BoxRenderable(renderer, {
     id: "board",
     flexDirection: "column",
@@ -160,8 +159,6 @@ export function createBoardScreen(
     flexGrow: 1,
     padding: 1,
   });
-
-  const commandBar = createCommandBar(renderer, theme);
 
   function refresh() {
     const { groups, flatTasks, doneCount } = buildGroups(db, state.filterText, state.showDone);
@@ -260,12 +257,11 @@ export function createBoardScreen(
     removeAllChildren(container);
     container.add(header);
     container.add(content);
-    container.add(commandBar.container);
     container.add(statusBar);
   }
 
   refresh();
-  return { container, state, commandBar, refresh };
+  return { container, state, refresh };
 }
 
 export function getSelectedTask(state: BoardState): Task | null {

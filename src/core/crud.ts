@@ -75,6 +75,13 @@ export async function completeTask(db: Database, idOrPrefix: string): Promise<Ta
   });
 }
 
+export async function reopenTask(db: Database, idOrPrefix: string): Promise<Task> {
+  return updateTask(db, idOrPrefix, {
+    status: "inbox",
+    completed: undefined,
+  });
+}
+
 export function listTasks(db: Database, filter: TaskFilter = {}): Task[] {
   return queryTasks(db, filter);
 }

@@ -5,6 +5,7 @@ import type { TaskPriority, TaskStatus } from "../core/task.js";
 export interface Suggestion {
   token: string; // what to insert (e.g. "#work")
   label: string; // display text (e.g. "#work (3 tasks)")
+  colorKey?: "priorityHigh" | "fieldTag" | "fieldStatus" | "fieldDue" | "fieldArea" | "fieldProject" | "fieldDuration" | "muted";
 }
 
 const PRIORITIES: TaskPriority[] = ["high", "medium", "low", "none"];
@@ -25,7 +26,7 @@ export function getSuggestions(db: Database, currentWord: string): Suggestion[] 
     const prefix = lower.slice(1);
     return PRIORITIES
       .filter((p) => p.startsWith(prefix))
-      .map((p) => ({ token: `!${p}`, label: `!${p}` }));
+      .map((p) => ({ token: `!${p}`, label: `!${p}`, colorKey: "priorityHigh" as const }));
   }
 
   // Status suggestions
@@ -33,7 +34,7 @@ export function getSuggestions(db: Database, currentWord: string): Suggestion[] 
     const prefix = lower.slice(1);
     return STATUSES
       .filter((s) => s.startsWith(prefix))
-      .map((s) => ({ token: `@${s}`, label: `@${s}` }));
+      .map((s) => ({ token: `@${s}`, label: `@${s}`, colorKey: "fieldStatus" as const }));
   }
 
   // Tag suggestions from existing tasks
@@ -43,7 +44,7 @@ export function getSuggestions(db: Database, currentWord: string): Suggestion[] 
     return existing
       .filter((t) => t.name.toLowerCase().startsWith(prefix))
       .slice(0, 5)
-      .map((t) => ({ token: `#${t.name}`, label: `#${t.name} (${t.count})` }));
+      .map((t) => ({ token: `#${t.name}`, label: `#${t.name} (${t.count})`, colorKey: "fieldTag" as const }));
   }
 
   // Due date suggestions
@@ -52,7 +53,7 @@ export function getSuggestions(db: Database, currentWord: string): Suggestion[] 
     return TIME_HINTS
       .filter((h) => h.startsWith(prefix))
       .slice(0, 5)
-      .map((h) => ({ token: `due:${h}`, label: `due:${h}` }));
+      .map((h) => ({ token: `due:${h}`, label: `due:${h}`, colorKey: "fieldDue" as const }));
   }
 
   // Scheduled suggestions
@@ -61,7 +62,7 @@ export function getSuggestions(db: Database, currentWord: string): Suggestion[] 
     return TIME_HINTS
       .filter((h) => h.startsWith(prefix))
       .slice(0, 5)
-      .map((h) => ({ token: `sched:${h}`, label: `sched:${h}` }));
+      .map((h) => ({ token: `sched:${h}`, label: `sched:${h}`, colorKey: "fieldDue" as const }));
   }
 
   // Area suggestions
@@ -71,7 +72,7 @@ export function getSuggestions(db: Database, currentWord: string): Suggestion[] 
     return existing
       .filter((a) => a.toLowerCase().startsWith(prefix))
       .slice(0, 5)
-      .map((a) => ({ token: `area:${a}`, label: `area:${a}` }));
+      .map((a) => ({ token: `area:${a}`, label: `area:${a}`, colorKey: "fieldArea" as const }));
   }
 
   // Project suggestions
@@ -82,17 +83,17 @@ export function getSuggestions(db: Database, currentWord: string): Suggestion[] 
     return existing
       .filter((p) => p.toLowerCase().startsWith(prefix))
       .slice(0, 5)
-      .map((p) => ({ token: `${short ? "proj" : "project"}:${p}`, label: `proj:${p}` }));
+      .map((p) => ({ token: `${short ? "proj" : "project"}:${p}`, label: `proj:${p}`, colorKey: "fieldProject" as const }));
   }
 
   // Duration suggestions
   if (lower.startsWith("dur:")) {
     return [
-      { token: "dur:15m", label: "dur:15m" },
-      { token: "dur:30m", label: "dur:30m" },
-      { token: "dur:1h", label: "dur:1h" },
-      { token: "dur:2h", label: "dur:2h" },
-      { token: "dur:4h", label: "dur:4h" },
+      { token: "dur:15m", label: "dur:15m", colorKey: "fieldDuration" as const },
+      { token: "dur:30m", label: "dur:30m", colorKey: "fieldDuration" as const },
+      { token: "dur:1h", label: "dur:1h", colorKey: "fieldDuration" as const },
+      { token: "dur:2h", label: "dur:2h", colorKey: "fieldDuration" as const },
+      { token: "dur:4h", label: "dur:4h", colorKey: "fieldDuration" as const },
     ];
   }
 
@@ -103,13 +104,12 @@ export function getSuggestions(db: Database, currentWord: string): Suggestion[] 
 /** Show token suggestions when between words */
 function getHints(): Suggestion[] {
   return [
-    { token: "!high", label: "\x1b[31m!pri\x1b[0m\x1b[2m" },
-    { token: "#", label: "\x1b[36m#tag\x1b[0m\x1b[2m" },
-    { token: "@next", label: "\x1b[33m@status\x1b[0m\x1b[2m" },
-    { token: "due:", label: "\x1b[35mdue:date\x1b[0m\x1b[2m" },
-    { token: "area:", label: "\x1b[34marea:\x1b[0m\x1b[2m" },
-    { token: "project:", label: "\x1b[34mproj:\x1b[0m\x1b[2m" },
-    { token: "dur:", label: "\x1b[34mdur:\x1b[0m\x1b[2m" },
+    { token: "!high", label: "!pri", colorKey: "priorityHigh" },
+    { token: "#", label: "#tag", colorKey: "fieldTag" },
+    { token: "@next", label: "@status", colorKey: "fieldStatus" },
+    { token: "due:", label: "due:date", colorKey: "fieldDue" },
+    { token: "area:", label: "area:", colorKey: "fieldArea" },
+    { token: "dur:", label: "dur:", colorKey: "fieldDuration" },
   ];
 }
 

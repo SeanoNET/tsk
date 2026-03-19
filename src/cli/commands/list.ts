@@ -31,12 +31,14 @@ export const listCommand = defineCommand({
     priority: { type: "string", description: "Filter by priority", alias: "p" },
     "due-before": { type: "string", description: "Due before date (ISO)" },
     "due-after": { type: "string", description: "Due after date (ISO)" },
+    done: { type: "boolean", description: "Include done tasks", default: false },
     json: { type: "boolean", description: "Output JSON", default: false },
   },
   async run({ args }) {
     const db = await ensureInitialized();
     const filter: TaskFilter = {};
     if (args.status) filter.status = args.status as TaskStatus;
+    else if (!args.done) filter.excludeStatus = ["done", "cancelled"];
     if (args.area) filter.area = args.area as string;
     if (args.project) filter.project = args.project as string;
     if (args.tag) filter.tag = args.tag as string;
