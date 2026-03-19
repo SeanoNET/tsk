@@ -4,3 +4,5 @@ dist/
 *.db-wal
 *.db-shm
 .worktrees/
+docs/superpowers/
+docs/tsk-design-doc-v2.docx

@@ -4,7 +4,10 @@ import { mkdtemp } from "fs/promises";
 import { join } from "path";
 import { DateTime } from "luxon";
 
-const TMPDIR = "/tmp/claude-1000";
+import { tmpdir } from "os";
+import { mkdir as mkdirp } from "fs/promises";
+const TMPDIR = tmpdir();
+await mkdirp(TMPDIR, { recursive: true });
 
 import { initSchema, getMeta, setMeta, indexTask } from "../../../src/core/db.js";
 import { writeTaskFile } from "../../../src/core/markdown.js";

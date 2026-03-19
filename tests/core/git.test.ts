@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { join } from "path";
+import { tmpdir } from "os";
+import { mkdir as mkdirp } from "fs/promises";
 
-const TMPDIR = "/tmp/claude-1000";
+const TMPDIR = tmpdir();
+await mkdirp(TMPDIR, { recursive: true });
 import { gitInit, isGitRepo, gitAdd, gitCommit } from "../../src/core/git.js";
 
 describe("git", () => {

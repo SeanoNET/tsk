@@ -6,7 +6,9 @@ import { rebuildIndex } from "../../src/core/reindex.js";
 import { initSchema, openDb, queryTasks, indexTask } from "../../src/core/db.js";
 import { serializeTask } from "../../src/core/markdown.js";
 import type { Task } from "../../src/core/task.js";
-const TMPDIR = "/tmp/claude-1000";
+import { tmpdir } from "os";
+const TMPDIR = tmpdir();
+await mkdir(TMPDIR, { recursive: true });
 
 function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Task {
   return {

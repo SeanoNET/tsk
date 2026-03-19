@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 
 // Must mock auth BEFORE importing client
 mock.module("../../../src/core/graph/auth.js", () => ({
@@ -150,5 +150,3 @@ describe("graph/client", () => {
   });
 });
 
-// Need afterEach import
-import { afterEach } from "bun:test";

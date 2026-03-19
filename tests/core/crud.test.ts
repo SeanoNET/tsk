@@ -2,8 +2,11 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { Database } from "bun:sqlite";
 import { mkdtemp } from "fs/promises";
 import { join } from "path";
+import { tmpdir } from "os";
+import { mkdir } from "fs/promises";
 
-const TMPDIR = "/tmp/claude-1000";
+const TMPDIR = tmpdir();
+await mkdir(TMPDIR, { recursive: true });
 import { initSchema } from "../../src/core/db.js";
 import { gitInit } from "../../src/core/git.js";
 import { createTask, getTask, updateTask, deleteTask, completeTask, listTasks } from "../../src/core/crud.js";

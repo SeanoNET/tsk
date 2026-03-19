@@ -14,7 +14,9 @@ import {
   gitRemoteGetUrl,
 } from "../../src/core/git.js";
 import type { Task } from "../../src/core/task.js";
-const TMPDIR = "/tmp/claude-1000";
+import { tmpdir } from "os";
+const TMPDIR = tmpdir();
+await mkdir(TMPDIR, { recursive: true });
 
 function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Task {
   return {
