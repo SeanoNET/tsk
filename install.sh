@@ -21,7 +21,7 @@ esac
 if [ -n "${TSK_VERSION:-}" ]; then
   VERSION="$TSK_VERSION"
 else
-  VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed 's/.*"v\(.*\)".*/\1/')
+  VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed 's/.*"\(.*\)".*/\1/')
   if [ -z "$VERSION" ]; then
     echo "Failed to determine latest version" >&2
     exit 1
@@ -29,7 +29,7 @@ else
 fi
 
 ARTIFACT="tsk-${OS}-${ARCH}"
-URL="https://github.com/${REPO}/releases/download/v${VERSION}/${ARTIFACT}"
+URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARTIFACT}"
 INSTALL_DIR="${TSK_INSTALL_DIR:-$HOME/.local/bin}"
 
 echo "Installing tsk v${VERSION} (${OS}/${ARCH})..."

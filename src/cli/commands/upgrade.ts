@@ -45,7 +45,7 @@ export const upgradeCommand = defineCommand({
       process.exit(1);
     }
 
-    const downloadUrl = `https://github.com/SeanoNET/tsk/releases/download/v${latestVersion}/${artifactName}`;
+    const downloadUrl = `https://github.com/SeanoNET/tsk/releases/download/${latestVersion}/${artifactName}`;
     console.log(`Downloading v${latestVersion}...`);
 
     const dlRes = await fetch(downloadUrl);

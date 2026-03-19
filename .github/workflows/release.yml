@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["[0-9]*"]
 
 permissions:
   contents: write
@@ -16,7 +16,7 @@ jobs:
         env:
           TAG_REF: ${{ github.ref_name }}
         run: |
-          TAG_VERSION="${TAG_REF#v}"
+          TAG_VERSION="$TAG_REF"
           PKG_VERSION=$(jq -r .version package.json)
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
             echo "::error::Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
