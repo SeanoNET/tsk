@@ -12,6 +12,7 @@ import { queryTasks, type TaskFilter } from "../../core/db.js";
 import type { Task, TaskStatus, TaskPriority } from "../../core/task.js";
 import { createTaskRow } from "../components/task-row.js";
 import { createStatusBar, type BoardStats } from "../components/status-bar.js";
+import pkg from "../../../package.json";
 import { parseFilterString } from "../components/command-bar.js";
 import type { TskTheme } from "../theme.js";
 import type { Action, ActionResult } from "../keybindings.js";
@@ -251,7 +252,7 @@ export function createBoardScreen(
       else stats.pending++;
     }
 
-    const statusBar = createStatusBar(renderer, theme, stats);
+    const statusBar = createStatusBar(renderer, theme, stats, pkg.version);
 
     // Rebuild container
     removeAllChildren(container);

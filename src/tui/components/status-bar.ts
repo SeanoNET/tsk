@@ -11,7 +11,8 @@ export interface BoardStats {
 export function createStatusBar(
   renderer: RenderContext,
   theme: TskTheme,
-  stats: BoardStats
+  stats: BoardStats,
+  version?: string
 ): BoxRenderable {
   const bar = new BoxRenderable(renderer, {
     id: "status-bar",
@@ -31,7 +32,7 @@ export function createStatusBar(
 
   const right = new TextRenderable(renderer, {
     id: "status-right",
-    content: t` ${bold(fg(theme.fg)("?"))} ${fg(theme.muted)("Help")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("P"))} ${fg(theme.muted)("Command")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("t"))} ${fg(theme.muted)("Task")} `,
+    content: t` ${bold(fg(theme.fg)("?"))} ${fg(theme.muted)("Help")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("P"))} ${fg(theme.muted)("Command")} ${fg(theme.muted)("|")} ${bold(fg(theme.fg)("t"))} ${fg(theme.muted)("Task")} ${fg(theme.muted)(version ? `| v${version}` : "")} `,
   });
 
   bar.add(left);
