@@ -32,43 +32,28 @@ jobs:
           - target: bun-linux-x64
             runner: ubuntu-latest
             artifact: tsk-linux-x64
-            opentui: "@opentui/core-linux-x64"
-            can_smoke_test: true
           - target: bun-linux-arm64
             runner: ubuntu-24.04-arm
             artifact: tsk-linux-arm64
-            opentui: "@opentui/core-linux-arm64"
-            can_smoke_test: true
-          - target: bun-darwin-x64
-            runner: macos-14
-            artifact: tsk-darwin-x64
-            opentui: "@opentui/core-darwin-x64"
-            can_smoke_test: false
           - target: bun-darwin-arm64
             runner: macos-14
             artifact: tsk-darwin-arm64
-            opentui: "@opentui/core-darwin-arm64"
-            can_smoke_test: true
           - target: bun-windows-x64
             runner: windows-latest
             artifact: tsk-windows-x64.exe
-            opentui: "@opentui/core-win32-x64"
-            can_smoke_test: true
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install
-      - name: Install target platform native deps
-        run: bun add --no-save ${{ matrix.opentui }}
       - name: Build
         run: bun build --compile --target=${{ matrix.target }} src/tsk.ts --outfile dist/${{ matrix.artifact }}
       - name: Smoke test
         run: ./dist/${{ matrix.artifact }} --version
-        if: ${{ matrix.can_smoke_test && !contains(matrix.runner, 'windows') }}
+        if: ${{ !contains(matrix.runner, 'windows') }}
       - name: Smoke test (Windows)
         run: .\dist\${{ matrix.artifact }} --version
-        if: ${{ matrix.can_smoke_test && contains(matrix.runner, 'windows') }}
+        if: ${{ contains(matrix.runner, 'windows') }}
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
