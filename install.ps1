@@ -10,7 +10,7 @@ if ($env:TSK_VERSION) {
 }
 
 $Artifact = "tsk-windows-x64.exe"
-$Url = "https://github.com/$Repo/releases/download/v$Version/$Artifact"
+$Url = "https://github.com/$Repo/releases/download/$Version/$Artifact"
 $InstallDir = "$env:LOCALAPPDATA\tsk"
 $ExePath = "$InstallDir\tsk.exe"
 
