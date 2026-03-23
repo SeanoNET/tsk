@@ -4,7 +4,7 @@ import { join, dirname } from "path";
 import { tmpdir } from "os";
 import pkg from "../../../package.json";
 import { compareVersions } from "../../core/update-check.js";
-import { tskDir } from "../../core/paths.js";
+import { tskLocalStateDir } from "../../core/paths.js";
 
 const PLATFORM_MAP: Record<string, string> = {
   "linux-x64": "tsk-linux-x64",
@@ -80,9 +80,9 @@ export const upgradeCommand = defineCommand({
 
     // Update the cache with previousVersion so next run shows "just upgraded" message
     try {
-      mkdirSync(tskDir(), { recursive: true });
+      mkdirSync(tskLocalStateDir(), { recursive: true });
       writeFileSync(
-        join(tskDir(), "update-check.json"),
+        join(tskLocalStateDir(), "update-check.json"),
         JSON.stringify({
           lastCheck: new Date().toISOString(),
           latestVersion,

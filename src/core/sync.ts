@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { join } from "path";
-import { open, unlink } from "fs/promises";
-import { tskDir } from "./paths.js";
+import { mkdir, open, rename, unlink } from "fs/promises";
+import { tskDir, tskLocalStateDir } from "./paths.js";
 import { readConfig } from "./config.js";
 import { rebuildIndex } from "./reindex.js";
 import { parseTaskFile } from "./markdown.js";
@@ -45,6 +45,24 @@ function statusPath(): string {
 
 function lockData(): string {
   return JSON.stringify({ pid: process.pid, timestamp: new Date().toISOString() });
+}
+
+async function migrateLegacyLocalFiles(): Promise<void> {
+  const legacyUpdateCache = join(tskDir(), "update-check.json");
+  const localUpdateCache = join(tskLocalStateDir(), "update-check.json");
+
+  try {
+    if (!(await Bun.file(legacyUpdateCache).exists())) return;
+    await mkdir(tskLocalStateDir(), { recursive: true });
+    await Bun.write(localUpdateCache, await Bun.file(legacyUpdateCache).text());
+    await unlink(legacyUpdateCache);
+  } catch {
+    try {
+      await rename(legacyUpdateCache, `${legacyUpdateCache}.bak`);
+    } catch {
+      // Ignore migration failures; git will surface any remaining problem
+    }
+  }
 }
 
 async function acquireLock(): Promise<boolean> {
@@ -228,6 +246,8 @@ export async function syncNow(db: Database): Promise<SyncResult> {
   }
 
   try {
+    await migrateLegacyLocalFiles();
+
     // Fetch
     const fetchResult = await gitFetch(remote);
     if (!fetchResult.ok) {

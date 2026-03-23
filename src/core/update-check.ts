@@ -1,6 +1,7 @@
 import { join } from "path";
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { tskDir } from "./paths.js";
+import { existsSync, renameSync, unlinkSync } from "fs";
+import { tskDir, tskLocalStateDir } from "./paths.js";
 
 interface UpdateCache {
   lastCheck: string;
@@ -12,10 +13,31 @@ const CACHE_FILE = "update-check.json";
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 function cachePath(): string {
+  return join(tskLocalStateDir(), CACHE_FILE);
+}
+
+function legacyCachePath(): string {
   return join(tskDir(), CACHE_FILE);
 }
 
+function migrateLegacyCache(): void {
+  const legacyPath = legacyCachePath();
+  if (!existsSync(legacyPath)) return;
+
+  try {
+    mkdirSync(tskLocalStateDir(), { recursive: true });
+    renameSync(legacyPath, cachePath());
+  } catch {
+    try {
+      unlinkSync(legacyPath);
+    } catch {
+      // Ignore cleanup failures
+    }
+  }
+}
+
 function readCache(): UpdateCache | null {
+  migrateLegacyCache();
   try {
     const raw = readFileSync(cachePath(), "utf-8");
     return JSON.parse(raw) as UpdateCache;
@@ -26,7 +48,7 @@ function readCache(): UpdateCache | null {
 
 function writeCache(cache: UpdateCache): void {
   try {
-    mkdirSync(tskDir(), { recursive: true });
+    mkdirSync(tskLocalStateDir(), { recursive: true });
     writeFileSync(cachePath(), JSON.stringify(cache, null, 2));
   } catch {
     // Silently ignore write failures

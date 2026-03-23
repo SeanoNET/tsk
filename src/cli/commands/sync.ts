@@ -1,4 +1,6 @@
 import { defineCommand } from "citty";
+import { mkdir, rename, unlink } from "fs/promises";
+import { join } from "path";
 import { ensureInitialized } from "../../core/ensure.js";
 import { readConfig, writeConfig } from "../../core/config.js";
 import { syncNow, readSyncStatus } from "../../core/sync.js";
@@ -15,6 +17,7 @@ import {
   gitRemoteAheadCount,
 } from "../../core/git.js";
 import { rebuildIndex } from "../../core/reindex.js";
+import { tskDir, tskLocalStateDir } from "../../core/paths.js";
 import { success, failure, printResult } from "../output.js";
 import { createInterface } from "readline";
 
@@ -28,6 +31,24 @@ async function prompt(question: string): Promise<string> {
   });
 }
 
+async function migrateLegacyLocalFiles(): Promise<void> {
+  const legacyUpdateCache = join(tskDir(), "update-check.json");
+  const localUpdateCache = join(tskLocalStateDir(), "update-check.json");
+
+  try {
+    if (!(await Bun.file(legacyUpdateCache).exists())) return;
+    await mkdir(tskLocalStateDir(), { recursive: true });
+    await Bun.write(localUpdateCache, await Bun.file(legacyUpdateCache).text());
+    await unlink(legacyUpdateCache);
+  } catch {
+    try {
+      await rename(legacyUpdateCache, `${legacyUpdateCache}.bak`);
+    } catch {
+      // Ignore migration failures; git will surface any remaining problem
+    }
+  }
+}
+
 const setupCommand = defineCommand({
   meta: { name: "setup", description: "Configure git remote for syncing tasks across machines" },
   args: {
@@ -38,6 +59,7 @@ const setupCommand = defineCommand({
       const db = await ensureInitialized();
       const config = await readConfig();
       const remote = config.sync.remote ?? "origin";
+      await migrateLegacyLocalFiles();
 
       // Check if already configured
       const existingUrl = await gitRemoteGetUrl(remote);

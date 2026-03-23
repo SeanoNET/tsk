@@ -41,6 +41,7 @@ export async function initTsk(force = false): Promise<void> {
       "index.db-wal",
       "index.db-shm",
       "auth.json",
+      "update-check.json",
       ".daemon.pid",
       ".sync-status.json",
       ".sync-mapping.json",
