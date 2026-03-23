@@ -15,6 +15,23 @@ const STATUS_SYMBOLS: Record<string, string> = {
   cancelled: "[-]",
 };
 
+const ANSI = {
+  reset: "\x1b[0m",
+  dim: "\x1b[90m",
+  red: "\x1b[91m",
+  yellow: "\x1b[93m",
+  green: "\x1b[92m",
+  cyan: "\x1b[96m",
+  blue: "\x1b[94m",
+  magenta: "\x1b[95m",
+};
+
+function colorize(text: string, color: string): string {
+  const useColor = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
+  if (!useColor || !text) return text;
+  return `${color}${text}${ANSI.reset}`;
+}
+
 function formatAge(created: string): string {
   const createdDt = DateTime.fromISO(created);
   const now = DateTime.now();
@@ -96,10 +113,26 @@ export const listCommand = defineCommand({
       const tags = task.tags?.length ? task.tags.map(tag => `#${tag}`).join(" ") : "";
       const due = task.status === "done" || task.status === "cancelled" ? "" : formatDue(task.due);
       const age = formatAge(task.created);
-      const metadata = [priority, tags, due, age].filter(Boolean).join("  ");
+      const priorityColored = priority
+        ? colorize(
+          priority,
+          task.priority === "high"
+            ? ANSI.red
+            : task.priority === "medium"
+              ? ANSI.yellow
+              : ANSI.green
+        )
+        : "";
+      const tagsColored = tags ? colorize(tags, ANSI.magenta) : "";
+      const dueColored = due
+        ? colorize(due, due === "overdue" ? ANSI.red : ANSI.yellow)
+        : "";
+      const ageColored = colorize(age, ANSI.dim);
+      const metadata = [priorityColored, tagsColored, dueColored, ageColored].filter(Boolean).join("  ");
       const terminalWidth = process.stdout.columns ?? 80;
       const prefix = `${status} ${id}  `;
-      const titleMax = Math.max(12, terminalWidth - prefix.length - metadata.length - (metadata ? 2 : 0));
+      const plainMetadata = [priority, tags, due, age].filter(Boolean).join("  ");
+      const titleMax = Math.max(12, terminalWidth - prefix.length - plainMetadata.length - (plainMetadata ? 2 : 0));
       const title = truncateText(task.title, titleMax);
       const suffix = metadata ? `  ${metadata}` : "";
       console.log(`${prefix}${title}${suffix}`);
