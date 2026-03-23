@@ -1,5 +1,13 @@
 #!/usr/bin/env bun
-import { runMain } from "citty";
+import { runMain, showUsage } from "citty";
 import { mainCommand } from "./cli/index.js";
 
-runMain(mainCommand);
+const argv = process.argv.slice(2);
+const wantsTopLevelHelp =
+  argv.length === 0 || (argv.length === 1 && ["-h", "--help"].includes(argv[0]!));
+
+if (wantsTopLevelHelp) {
+  showUsage(mainCommand);
+} else {
+  runMain(mainCommand);
+}

@@ -1,4 +1,4 @@
-import { defineCommand, showUsage } from "citty";
+import { defineCommand } from "citty";
 import pkg from "../../package.json";
 import { initCommand } from "./commands/init.js";
 import { addCommand } from "./commands/add.js";
@@ -38,8 +38,5 @@ export const mainCommand = defineCommand({
   },
   setup() {
     checkForUpdate(pkg.version);
-  },
-  run() {
-    showUsage(mainCommand);
   },
 });
