@@ -34,6 +34,27 @@ function formatAge(created: string): string {
   return `${months}mo`;
 }
 
+function formatDue(due?: string): string {
+  if (!due) return "";
+
+  const dueDt = DateTime.fromISO(due);
+  if (!dueDt.isValid) return "";
+
+  const now = DateTime.now();
+  if (dueDt < now.startOf("day")) return "overdue";
+  if (dueDt.hasSame(now, "day")) return "today";
+  if (dueDt.hasSame(now.plus({ days: 1 }), "day")) return "tomorrow";
+  if (dueDt.year === now.year) return dueDt.toFormat("d LLL");
+  return dueDt.toFormat("d LLL yyyy");
+}
+
+function truncateText(value: string, maxLength: number): string {
+  if (maxLength <= 0) return "";
+  if (value.length <= maxLength) return value;
+  if (maxLength === 1) return "…";
+  return `${value.slice(0, maxLength - 1)}…`;
+}
+
 export function createTaskRow(
   renderer: RenderContext,
   task: Task,
@@ -65,44 +86,47 @@ export function createTaskRow(
 
   const titleColor = opts.selected ? theme.selectedFg : theme.fg;
 
-  // Priority indicator — uses priorityHigh (red) and priorityMedium (yellow)
-  const priStr = task.priority === "high" ? " (!!) " : task.priority === "medium" ? " (!) " : " ";
-  const priColor = task.priority === "high" ? theme.priorityHigh : task.priority === "medium" ? theme.priorityMedium : theme.muted;
-  // Tags — uses fieldTag color (purple), consistent with #tag in add dialog
-  const tagStr = task.tags?.length
-    ? task.tags.map(tag => `#${tag}`).join(" ")
-    : "";
-
-  // Due date indicator
-  const now = DateTime.now();
-  const isOverdue = !isDone && task.due && DateTime.fromISO(task.due) < now.startOf("day");
-  const dueStr = isOverdue ? " OVERDUE" : "";
-
-  // Age
+  const priorityLabel = task.priority !== "none" ? `!${task.priority}` : "";
+  const tagLabel = task.tags?.length ? task.tags.map(tag => `#${tag}`).join(" ") : "";
+  const dueLabel = !isDone ? formatDue(task.due) : "";
   const age = formatAge(task.created);
 
-  // Assemble: id sym title priority tags due age
+  const metadataParts = [priorityLabel, tagLabel, dueLabel, age].filter(Boolean);
+  const metadataText = metadataParts.join("  ");
+  const terminalWidth = process.stdout.columns ?? 80;
+  const prefixWidth = 6; // "  1 □ "
+  const suffixWidth = metadataText ? metadataText.length + 2 : age.length;
+  const titleMax = Math.max(12, terminalWidth - prefixWidth - suffixWidth);
+  const titleText = truncateText(task.title, titleMax);
+
   const idPart = fg(opts.selected ? theme.selectedFg : theme.muted)(idPadded);
   const symPart = fg(displaySymColor)(displaySym);
-  const priPart = fg(priColor)(priStr);
-  const duePart = dueStr ? fg(theme.error)(dueStr + " ") : "";
-  const agePart = fg(theme.muted)(age);
+  const titlePartBase = isDone
+    ? fg(theme.muted)(strikethrough(titleText))
+    : fg(titleColor)(titleText);
+  const priPart = priorityLabel
+    ? fg(
+      task.priority === "high"
+        ? theme.priorityHigh
+        : task.priority === "medium"
+          ? theme.priorityMedium
+          : theme.priorityLow
+    )(`  ${priorityLabel}`)
+    : "";
+  const tagPart = tagLabel ? fg(theme.fieldTag)(`  ${tagLabel}`) : "";
+  const duePart = dueLabel
+    ? fg(dueLabel === "overdue" ? theme.error : theme.fieldDue)(`  ${dueLabel}`)
+    : "";
+  const agePart = fg(theme.muted)(`  ${age}`);
 
-  // Build title part — partial strikethrough for animation, full for done, plain otherwise
   let content: any;
   if (stChars !== undefined && stChars >= 0) {
-    const struckPart = fg(theme.muted)(strikethrough(task.title.slice(0, stChars)));
-    const restPart = fg(titleColor)(task.title.slice(stChars));
-    content = tagStr
-      ? t`${idPart} ${symPart} ${struckPart}${restPart}${priPart}${fg(theme.fieldTag)(tagStr)} ${duePart}${agePart}`
-      : t`${idPart} ${symPart} ${struckPart}${restPart}${priPart}${duePart}${agePart}`;
+    const animatedTitle = truncateText(task.title, titleMax);
+    const struckPart = fg(theme.muted)(strikethrough(animatedTitle.slice(0, stChars)));
+    const restPart = fg(titleColor)(animatedTitle.slice(stChars));
+    content = t`${idPart} ${symPart} ${struckPart}${restPart}${priPart}${tagPart}${duePart}${agePart}`;
   } else {
-    const titlePart = isDone
-      ? fg(theme.muted)(strikethrough(task.title))
-      : fg(titleColor)(task.title);
-    content = tagStr
-      ? t`${idPart} ${symPart} ${titlePart}${priPart}${fg(theme.fieldTag)(tagStr)} ${duePart}${agePart}`
-      : t`${idPart} ${symPart} ${titlePart}${priPart}${duePart}${agePart}`;
+    content = t`${idPart} ${symPart} ${titlePartBase}${priPart}${tagPart}${duePart}${agePart}`;
   }
 
   row.add(

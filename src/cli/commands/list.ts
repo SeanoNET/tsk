@@ -1,16 +1,10 @@
 import { defineCommand } from "citty";
+import { DateTime } from "luxon";
 import { ensureInitialized } from "../../core/ensure.js";
 import { listTasks } from "../../core/crud.js";
 import type { TaskFilter } from "../../core/db.js";
 import type { TaskStatus, TaskPriority } from "../../core/task.js";
 import { success, printResult } from "../output.js";
-
-const PRIORITY_SYMBOLS: Record<string, string> = {
-  high: "!!!",
-  medium: "!!",
-  low: "!",
-  none: " ",
-};
 
 const STATUS_SYMBOLS: Record<string, string> = {
   inbox: "[ ]",
@@ -20,6 +14,42 @@ const STATUS_SYMBOLS: Record<string, string> = {
   done: "[x]",
   cancelled: "[-]",
 };
+
+function formatAge(created: string): string {
+  const createdDt = DateTime.fromISO(created);
+  const now = DateTime.now();
+  const hours = Math.floor(now.diff(createdDt, "hours").hours);
+  const days = Math.floor(now.diff(createdDt, "days").days);
+  const weeks = Math.floor(now.diff(createdDt, "weeks").weeks);
+  const months = Math.floor(now.diff(createdDt, "months").months);
+
+  if (hours < 1) return "<1h";
+  if (hours < 24) return `${hours}h`;
+  if (days <= 6) return `${days}d`;
+  if (weeks <= 4) return `${weeks}w`;
+  return `${months}mo`;
+}
+
+function formatDue(due?: string): string {
+  if (!due) return "";
+
+  const dueDt = DateTime.fromISO(due);
+  if (!dueDt.isValid) return "";
+
+  const now = DateTime.now();
+  if (dueDt < now.startOf("day")) return "overdue";
+  if (dueDt.hasSame(now, "day")) return "today";
+  if (dueDt.hasSame(now.plus({ days: 1 }), "day")) return "tomorrow";
+  if (dueDt.year === now.year) return dueDt.toFormat("d LLL");
+  return dueDt.toFormat("d LLL yyyy");
+}
+
+function truncateText(value: string, maxLength: number): string {
+  if (maxLength <= 0) return "";
+  if (value.length <= maxLength) return value;
+  if (maxLength === 1) return "…";
+  return `${value.slice(0, maxLength - 1)}…`;
+}
 
 export const listCommand = defineCommand({
   meta: { name: "list", description: "List tasks" },
@@ -61,10 +91,18 @@ export const listCommand = defineCommand({
 
     for (const task of tasks) {
       const status = STATUS_SYMBOLS[task.status] ?? "[ ]";
-      const priority = PRIORITY_SYMBOLS[task.priority] ?? " ";
-      const due = task.due ? ` (due: ${task.due.slice(0, 10)})` : "";
       const id = task.id.slice(0, 8);
-      console.log(`${status} ${priority.padEnd(3)} ${id}  ${task.title}${due}`);
+      const priority = task.priority !== "none" ? `!${task.priority}` : "";
+      const tags = task.tags?.length ? task.tags.map(tag => `#${tag}`).join(" ") : "";
+      const due = task.status === "done" || task.status === "cancelled" ? "" : formatDue(task.due);
+      const age = formatAge(task.created);
+      const metadata = [priority, tags, due, age].filter(Boolean).join("  ");
+      const terminalWidth = process.stdout.columns ?? 80;
+      const prefix = `${status} ${id}  `;
+      const titleMax = Math.max(12, terminalWidth - prefix.length - metadata.length - (metadata ? 2 : 0));
+      const title = truncateText(task.title, titleMax);
+      const suffix = metadata ? `  ${metadata}` : "";
+      console.log(`${prefix}${title}${suffix}`);
     }
   },
 });
