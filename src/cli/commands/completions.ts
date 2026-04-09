@@ -391,22 +391,30 @@ async function installCompletion(
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(file, script, "utf-8");
 
-    // Determine PowerShell profile path
-    const psProfile =
-      process.env.PROFILE ||
-      (process.platform === "win32"
-        ? path.default.join(
-            home,
-            "Documents",
-            "PowerShell",
-            "Microsoft.PowerShell_profile.ps1"
-          )
-        : path.default.join(
-            home,
-            ".config",
-            "powershell",
-            "Microsoft.PowerShell_profile.ps1"
-          ));
+    // Discover PowerShell profile path by asking PowerShell itself
+    const { execSync } = await import("child_process");
+    let psProfile: string | undefined;
+    for (const cmd of ["pwsh", "powershell"]) {
+      try {
+        psProfile = execSync(`${cmd} -NoProfile -Command "echo $PROFILE"`, {
+          encoding: "utf-8",
+          timeout: 5000,
+        }).trim();
+        if (psProfile) break;
+      } catch {
+        // Try next shell
+      }
+    }
+
+    if (!psProfile) {
+      // Fallback if neither pwsh nor powershell found
+      psProfile = path.default.join(
+        home,
+        "Documents",
+        "PowerShell",
+        "Microsoft.PowerShell_profile.ps1"
+      );
+    }
 
     const profileDir = path.default.dirname(psProfile);
     fs.mkdirSync(profileDir, { recursive: true });
