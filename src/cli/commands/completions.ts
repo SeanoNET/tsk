@@ -178,6 +178,77 @@ _tsk() {
 }
 complete -F _tsk tsk`;
 
+const POWERSHELL_COMPLETION = `# PowerShell completion for tsk
+Register-ArgumentCompleter -CommandName tsk -Native -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+
+    $commands = @{
+        'init'    = 'Initialize tsk in current directory'
+        'add'     = 'Create a new task'
+        'list'    = 'List tasks'
+        'show'    = 'Show task details'
+        'done'    = 'Mark a task as complete'
+        'edit'    = 'Edit a task'
+        'delete'  = 'Delete a task'
+        'process' = 'Process inbox tasks'
+        'ui'      = 'Open TUI dashboard'
+        'upgrade' = 'Upgrade tsk to latest version'
+        'git'     = 'Git sync commands'
+        'auth'    = 'Authentication (login/logout)'
+        'sync'    = 'Microsoft Graph sync'
+        'completions' = 'Install shell completions'
+    }
+
+    $commandFlags = @{
+        'add'    = @('--priority', '-p', '--area', '-a', '--project', '--tags', '-t', '--due', '-d', '--duration', '--status', '-s', '--interactive', '-i', '--json')
+        'list'   = @('--status', '-s', '--area', '-a', '--project', '--tag', '-t', '--priority', '-p', '--due-before', '--due-after', '--done', '--json')
+        'show'   = @('--json')
+        'done'   = @('--json')
+        'edit'   = @('--title', '--status', '-s', '--priority', '-p', '--area', '-a', '--project', '--tags', '-t', '--due', '-d', '--duration', '--interactive', '-i', '--editor', '--json')
+        'delete' = @('--force', '-f', '--json')
+        'process' = @('--json')
+        'init'   = @('--force', '--json')
+        'auth'   = @('login', 'logout')
+        'sync'   = @('--dry', '--json')
+        'git'    = @('setup', 'status', 'disconnect', '--json')
+        'completions' = @('zsh', 'bash', 'powershell', '--print')
+    }
+
+    $flagValues = @{
+        '--priority' = @('high', 'medium', 'low', 'none')
+        '-p'         = @('high', 'medium', 'low', 'none')
+        '--status'   = @('inbox', 'next', 'waiting', 'someday', 'done', 'cancelled')
+        '-s'         = @('inbox', 'next', 'waiting', 'someday', 'done', 'cancelled')
+    }
+
+    $elements = $commandAst.CommandElements
+    $command = if ($elements.Count -ge 2) { $elements[1].ToString() } else { $null }
+
+    # Complete flag values
+    if ($elements.Count -ge 3) {
+        $prev = $elements[$elements.Count - 2].ToString()
+        if ($flagValues.ContainsKey($prev)) {
+            $flagValues[$prev] | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+            }
+            return
+        }
+    }
+
+    # Complete subcommand flags
+    if ($command -and $commandFlags.ContainsKey($command)) {
+        $commandFlags[$command] | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+            [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+        }
+        return
+    }
+
+    # Complete commands
+    $commands.GetEnumerator() | Where-Object { $_.Key -like "$wordToComplete*" } | ForEach-Object {
+        [System.Management.Automation.CompletionResult]::new($_.Key, $_.Key, 'Command', $_.Value)
+    }
+}`;
+
 const ZSHRC_BLOCK = `
 # tsk shell completions
 fpath=(~/.zsh/completions $fpath)
@@ -193,7 +264,7 @@ export const completionsCommand = defineCommand({
   args: {
     shell: {
       type: "positional",
-      description: "Shell type: zsh, bash",
+      description: "Shell type: zsh, bash, powershell",
       required: false,
     },
     print: {
@@ -207,12 +278,17 @@ export const completionsCommand = defineCommand({
 
     if (!shell) {
       console.error(
-        "Could not detect shell. Specify one: tsk completions zsh"
+        "Could not detect shell. Specify one: tsk completions zsh|bash|powershell"
       );
       process.exit(1);
     }
 
-    const script = shell === "zsh" ? ZSH_COMPLETION : BASH_COMPLETION;
+    const script =
+      shell === "zsh"
+        ? ZSH_COMPLETION
+        : shell === "bash"
+          ? BASH_COMPLETION
+          : POWERSHELL_COMPLETION;
 
     if (args.print) {
       console.log(script);
@@ -223,14 +299,21 @@ export const completionsCommand = defineCommand({
   },
 });
 
-function detectShell(explicit?: string): "zsh" | "bash" | null {
+type ShellType = "zsh" | "bash" | "powershell";
+
+function detectShell(explicit?: string): ShellType | null {
   if (explicit) {
     const s = explicit.toLowerCase();
-    if (s === "zsh" || s === "bash") return s;
-    console.error(`Unsupported shell: ${explicit}. Use zsh or bash.`);
+    if (s === "zsh" || s === "bash" || s === "powershell" || s === "pwsh")
+      return s === "pwsh" ? "powershell" : s;
+    console.error(
+      `Unsupported shell: ${explicit}. Use zsh, bash, or powershell.`
+    );
     process.exit(1);
   }
 
+  // Auto-detect
+  if (process.platform === "win32") return "powershell";
   const shellEnv = process.env.SHELL || "";
   if (shellEnv.includes("zsh")) return "zsh";
   if (shellEnv.includes("bash")) return "bash";
@@ -238,7 +321,7 @@ function detectShell(explicit?: string): "zsh" | "bash" | null {
 }
 
 async function installCompletion(
-  shell: "zsh" | "bash",
+  shell: ShellType,
   script: string
 ): Promise<void> {
   const fs = await import("fs");
@@ -270,7 +353,7 @@ async function installCompletion(
 
     console.log();
     console.log("Restart your shell or run: source ~/.zshrc");
-  } else {
+  } else if (shell === "bash") {
     // Write completion script
     const dir = path.default.join(
       home,
@@ -301,5 +384,48 @@ async function installCompletion(
 
     console.log();
     console.log("Restart your shell or run: source ~/.bashrc");
+  } else {
+    // PowerShell — write script and add to $PROFILE
+    const dir = path.default.join(home, ".config", "tsk");
+    const file = path.default.join(dir, "completions.ps1");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, script, "utf-8");
+
+    // Determine PowerShell profile path
+    const psProfile =
+      process.env.PROFILE ||
+      (process.platform === "win32"
+        ? path.default.join(
+            home,
+            "Documents",
+            "PowerShell",
+            "Microsoft.PowerShell_profile.ps1"
+          )
+        : path.default.join(
+            home,
+            ".config",
+            "powershell",
+            "Microsoft.PowerShell_profile.ps1"
+          ));
+
+    const profileDir = path.default.dirname(psProfile);
+    fs.mkdirSync(profileDir, { recursive: true });
+
+    const existing = fs.existsSync(psProfile)
+      ? fs.readFileSync(psProfile, "utf-8")
+      : "";
+
+    if (!existing.includes("# tsk shell completions")) {
+      const sourceBlock = `\n# tsk shell completions\n. "${file}"\n`;
+      fs.appendFileSync(psProfile, sourceBlock, "utf-8");
+      console.log(`Installed PowerShell completions to ${file}`);
+      console.log(`Added source line to ${psProfile}`);
+    } else {
+      console.log(`Installed PowerShell completions to ${file}`);
+      console.log(`Profile already configured`);
+    }
+
+    console.log();
+    console.log("Restart PowerShell or run: . $PROFILE");
   }
 }

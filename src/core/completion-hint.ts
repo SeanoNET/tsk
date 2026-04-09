@@ -6,23 +6,45 @@ import { tskLocalStateDir } from "./paths.js";
 const HINT_DISMISSED_FILE = "completions-hinted";
 
 export function checkCompletionHint(): void {
-  // Only hint on zsh
-  const shell = process.env.SHELL || "";
-  if (!shell.includes("zsh")) return;
-
   // Don't hint if already dismissed
   const flagPath = join(tskLocalStateDir(), HINT_DISMISSED_FILE);
   if (existsSync(flagPath)) return;
 
+  const home = homedir();
+  let shell: string;
+  let completionFile: string;
+
+  if (process.platform === "win32") {
+    shell = "powershell";
+    completionFile = join(home, ".config", "tsk", "completions.ps1");
+  } else {
+    const shellEnv = process.env.SHELL || "";
+    if (shellEnv.includes("zsh")) {
+      shell = "zsh";
+      completionFile = join(home, ".zsh", "completions", "_tsk");
+    } else if (shellEnv.includes("bash")) {
+      shell = "bash";
+      completionFile = join(
+        home,
+        ".local",
+        "share",
+        "bash-completion",
+        "completions",
+        "tsk"
+      );
+    } else {
+      return;
+    }
+  }
+
   // Check if completions are already installed
-  const completionFile = join(homedir(), ".zsh", "completions", "_tsk");
   if (existsSync(completionFile)) {
     dismissHint(flagPath);
     return;
   }
 
   console.error(
-    "Tip: Tab completions are available for zsh. Run 'tsk completions zsh' to install."
+    `Tip: Tab completions are available. Run 'tsk completions ${shell}' to install.`
   );
   dismissHint(flagPath);
 }
