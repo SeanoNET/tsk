@@ -13,7 +13,9 @@ import { upgradeCommand } from "./commands/upgrade.js";
 import { gitCommand } from "./commands/sync.js";
 import { authCommand } from "./commands/auth.js";
 import { syncCommand } from "./commands/graph-sync.js";
+import { completionsCommand } from "./commands/completions.js";
 import { checkForUpdate } from "../core/update-check.js";
+import { checkCompletionHint } from "../core/completion-hint.js";
 
 export const mainCommand = defineCommand({
   meta: {
@@ -35,8 +37,10 @@ export const mainCommand = defineCommand({
     git: gitCommand,
     auth: authCommand,
     sync: syncCommand,
+    completions: completionsCommand,
   },
   setup() {
     checkForUpdate(pkg.version);
+    checkCompletionHint();
   },
 });
