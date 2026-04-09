@@ -179,7 +179,7 @@ _tsk() {
 complete -F _tsk tsk`;
 
 const POWERSHELL_COMPLETION = `# PowerShell completion for tsk
-Register-ArgumentCompleter -CommandName tsk -Native -ScriptBlock {
+Register-ArgumentCompleter -CommandName tsk,tsk.exe -Native -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
     $commands = @{
